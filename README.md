@@ -8,21 +8,22 @@
 ## Table of Contents
 
 1. [Logic Gates & Von Neumann — The Physical and Architectural Foundation](#chapter-01)
-2. [The Instruction Set — Opcodes, Decoders and the First Programs](#chapter-02)
-3. [Protection Rings — Hardware-Enforced Privilege](#chapter-03)
-4. [History & Philosophy — The ASR-33, Unix, C, BSD and Linux](#chapter-04)
-5. [Automata Theory, Formal Languages and Regular Expressions](#chapter-05)
-6. [How Code Works — Machine Code, Assembly, C and Compilers](#chapter-06)
-7. [Storage — Hard Drives, Partitions and Filesystems](#chapter-07)
-8. [The Kernel Interface — Everything is a File, Inodes and System Calls](#chapter-08)
-9. [File Descriptors — The Unified Handle for Everything](#chapter-09)
-10. [The Process Model — Fork, Exec and the Process Tree](#chapter-10)
-11. [The Boot Chain — Power On to Login](#chapter-11)
-12. [Networking — Sockets, TCP and the BSD API](#chapter-12)
-13. [Network Defence — DDoS Protection and the Attack Surface](#chapter-13)
-14. [Service Sandboxing — Isolating Services from the OS](#chapter-14)
-15. [Memory Vulnerabilities — Buffer Overflows and Beyond](#chapter-15)
-16. [Mobile Architecture — From Battery to Baseband](#chapter-16)
+2. [Memory, Addresses, Registers and the Memory Hierarchy](#chapter-02)
+3. [The Instruction Set — Opcodes, Decoders and the First Programs](#chapter-03)
+4. [Protection Rings — Hardware-Enforced Privilege](#chapter-04)
+5. [History & Philosophy — The ASR-33, Unix, C, BSD and Linux](#chapter-05)
+6. [Automata Theory, Formal Languages and Regular Expressions](#chapter-06)
+7. [How Code Works — Machine Code, Assembly, C and Compilers](#chapter-07)
+8. [Storage — Hard Drives, Partitions and Filesystems](#chapter-08)
+9. [The Kernel Interface — Everything is a File, Inodes and System Calls](#chapter-09)
+10. [File Descriptors — The Unified Handle for Everything](#chapter-10)
+11. [The Process Model — Fork, Exec and the Process Tree](#chapter-11)
+12. [The Boot Chain — Power On to Login](#chapter-12)
+13. [Networking — Sockets, TCP and the BSD API](#chapter-13)
+14. [Network Defence — DDoS Protection and the Attack Surface](#chapter-14)
+15. [Service Sandboxing — Isolating Services from the OS](#chapter-15)
+16. [Memory Vulnerabilities — Buffer Overflows and Beyond](#chapter-16)
+17. [Mobile Architecture — From Battery to Baseband](#chapter-17)
 
 ---
 
@@ -767,7 +768,979 @@ The fixed starting address is why the boot chain in Chapter 10 works automatical
 -e 
 ---
 
-# Chapter 02: The Instruction Set — Opcodes, Decoders and the First Programs
+# Chapter 02: Memory, Addresses, Registers and the Memory Hierarchy
+
+Chapter 01 established that the CPU contains registers and RAM is a grid of flip-flops. This chapter fills the gap between those hardware facts and everything the rest of the document assumes — what a memory address actually is, how registers differ from RAM, why the memory hierarchy exists, and how virtual memory and page tables work. These concepts are mentioned throughout the document (page tables in rings, page faults in memory vulnerabilities, TEE in mobile) but never defined from scratch. This chapter defines them all.
+
+---
+
+## What Is a Memory Address
+
+A memory address is simply a number — an integer that identifies one specific byte in the computer's memory. Nothing more.
+
+Imagine RAM as an enormous array of bytes. The first byte is at index 0. The second at index 1. The millionth at index 999,999. The index is the address.
+
+```
+RAM as a byte array (conceptual):
+
+Address    Value (what is stored there)
+─────────  ────────────────────────────
+0x00000000  0x48  <- the byte at address 0
+0x00000001  0x65
+0x00000002  0x6C
+0x00000003  0x6C
+0x00000004  0x6F  <- these five bytes spell "Hello" in ASCII
+0x00000005  0x00  <- null terminator
+0x00000006  0x00  <- unused
+...
+0xFFFFFFFF  0x00  <- the last byte (32-bit address space)
+```
+
+The CPU reads and writes memory using addresses. Every instruction that touches memory specifies an address. Every variable in your program lives at an address. Every function lives at an address. The address is how anything in memory is found.
+
+### How Many Addresses Exist
+
+The number of addressable bytes depends on how many bits the CPU uses for addresses. This is what "32-bit" and "64-bit" mean for address space:
+
+```
+8-bit address bus:   2^8  =           256 addressable bytes
+16-bit address bus:  2^16 =        65,536 bytes = 64 KB
+32-bit address bus:  2^32 = 4,294,967,296 bytes = 4 GB
+64-bit address bus:  2^64 = 18,446,744 TB (theoretical)
+
+Real 64-bit CPUs implement 48 bits of address space:
+  2^48 = 256 TB (enough for the foreseeable future)
+  Top 16 bits must be all-zeros or all-ones (canonical form)
+  This leaves room to extend to more bits in the future
+```
+
+This is the concrete meaning of "32-bit CPU capped at 4GB RAM" — a 32-bit address can only point to 4 billion different bytes. To use more RAM you need more address bits. 64-bit addresses make the address space essentially unlimited for current purposes.
+
+### Addresses in Hexadecimal
+
+Memory addresses are always written in hexadecimal (base 16) because one hex digit represents exactly four bits:
+
+```
+Hex digits: 0 1 2 3 4 5 6 7 8 9 A B C D E F (16 values)
+One hex digit = 4 bits
+Two hex digits = 8 bits = one byte
+
+32-bit address: 8 hex digits  e.g. 0x00401234
+64-bit address: 16 hex digits e.g. 0x00007FFF5FBFF8B0
+
+The 0x prefix means "this number is in hexadecimal"
+0xFF = 255 decimal
+0x10 = 16 decimal
+0x100 = 256 decimal
+```
+
+When you see a memory address in a debugger, an error message, or a disassembly listing, it is always a hexadecimal number referring to a specific byte location.
+
+---
+
+## Registers vs RAM — Two Completely Different Types of Storage
+
+Registers and RAM are both storage — they both hold binary values. But they are built differently, located differently, sized differently, and operate at completely different speeds.
+
+### Registers — Storage Inside the CPU Die
+
+Registers are flip-flop circuits built directly into the CPU chip itself, millimetres from the execution units. The CPU accesses them with zero memory bus traffic — they are wired directly to the ALU.
+
+```
+Register characteristics:
+  Location:    inside the CPU die itself
+  Built from:  flip-flops (Chapter 01 — D flip-flops)
+  Quantity:    very few — 16 to 32 general-purpose registers
+  Size:        one register = 64 bits (8 bytes) on a 64-bit CPU
+  Access time: 0 clock cycles (wired directly)
+  Named:       every register has a name (RAX, RBX, RSP on x86-64)
+  Purpose:     immediate operands for current instruction
+```
+
+Every instruction operates on registers. `ADD RAX, RBX` adds two registers. `MOV RAX, 5` loads a value into a register. The ALU has direct electrical connections to the register file — there is no bus, no wait, no fetch. The register values are available in the same clock cycle they are needed.
+
+### RAM — Storage on Separate Chips
+
+RAM (Random Access Memory) is a large grid of storage cells on separate chips connected to the CPU via a memory bus. It holds gigabytes of data but is far slower than registers.
+
+```
+RAM characteristics:
+  Location:    separate chips on the motherboard (desktop)
+               on-package but separate from CPU die (mobile — LPDDR)
+  Built from:  DRAM cells (capacitors that hold charge)
+  Quantity:    billions to trillions of addressable bytes
+  Size:        addressed one byte at a time
+  Access time: 60-100 nanoseconds (hundreds of clock cycles)
+  Named:       not named — identified by address number
+  Purpose:     long-term storage of all data and code during execution
+```
+
+When the CPU needs data from RAM, it must: send the address over the memory bus, wait for the memory controller to locate it, wait for the DRAM to respond, and receive the value over the bus. This takes 100-300 clock cycles on a modern CPU. During those cycles the CPU may stall completely — waiting.
+
+### The Critical Difference in One Diagram
+
+```
+CPU chip:
+┌─────────────────────────────────────────────┐
+│  ALU ←──────────────────────► Register File │
+│   ↑     direct wire, 0 cycles    RAX RBX    │
+│   │     no bus, no wait          RCX RDX    │
+│   │                              RSP RBP    │
+│   │                              ... 16 total│
+└───┼─────────────────────────────────────────┘
+    │ memory bus (100-300 cycles round trip)
+    │
+┌───▼──────────────────────────────────────────┐
+│  RAM chips: 8 GB of addressable bytes        │
+│  [byte 0][byte 1][byte 2]...[byte 8589934591]│
+└──────────────────────────────────────────────┘
+
+Register access: zero bus transactions, zero wait
+RAM access:      one bus transaction, 100-300 cycle wait
+```
+
+This is why the CPU has so few registers — registers are expensive real estate on the CPU die. Every additional register requires more transistors, more routing, and more power. Sixteen to thirty-two is the practical limit. Everything else goes in RAM.
+
+---
+
+## The Memory Hierarchy — Bridging the Speed Gap
+
+The 100-300 cycle penalty for RAM access would make modern CPUs impossibly slow if every instruction had to fetch from RAM. A CPU running at 3 GHz executing 3 billion instructions per second could not afford 300-cycle waits for every memory access.
+
+The solution is a **memory hierarchy** — multiple layers of storage, each faster but smaller than the one below it. Data migrates up toward the CPU as it is used and falls back down as it becomes less needed.
+
+```
+Memory Hierarchy (fastest/smallest at top, slowest/largest at bottom):
+
+┌────────────────────────────────────────────────────────────────────┐
+│  REGISTERS                                                         │
+│  Size: 16-32 × 8 bytes = ~256 bytes total                         │
+│  Speed: 0 cycles (wired to ALU)                                    │
+│  Location: inside CPU die                                          │
+└────────────────────────────────────────────────────────────────────┘
+        ↕ automatic (hardware managed)
+┌────────────────────────────────────────────────────────────────────┐
+│  L1 CACHE (Level 1)                                                │
+│  Size: 32-64 KB per core (split: I-cache + D-cache)               │
+│  Speed: 4-5 cycles                                                 │
+│  Location: inside CPU die, next to each core                       │
+│  Note: Modified Harvard architecture — separate I and D caches     │
+└────────────────────────────────────────────────────────────────────┘
+        ↕ automatic (hardware managed)
+┌────────────────────────────────────────────────────────────────────┐
+│  L2 CACHE (Level 2)                                                │
+│  Size: 256 KB to 1 MB per core                                     │
+│  Speed: 12-15 cycles                                               │
+│  Location: inside CPU die, per-core or shared between a few cores  │
+└────────────────────────────────────────────────────────────────────┘
+        ↕ automatic (hardware managed)
+┌────────────────────────────────────────────────────────────────────┐
+│  L3 CACHE (Level 3 / Last Level Cache)                             │
+│  Size: 8-64 MB (shared across all cores)                           │
+│  Speed: 30-50 cycles                                               │
+│  Location: inside CPU die, shared                                  │
+└────────────────────────────────────────────────────────────────────┘
+        ↕ automatic (hardware managed)
+┌────────────────────────────────────────────────────────────────────┐
+│  MAIN MEMORY (RAM — DRAM chips)                                    │
+│  Size: 8 GB to 128 GB typical                                      │
+│  Speed: 100-300 cycles                                             │
+│  Location: separate chips on motherboard                           │
+└────────────────────────────────────────────────────────────────────┘
+        ↕ OS managed (demand paging)
+┌────────────────────────────────────────────────────────────────────┐
+│  STORAGE (SSD or HDD)                                              │
+│  Size: hundreds of GB to terabytes                                 │
+│  Speed: microseconds to milliseconds (millions of cycles)          │
+│  Location: separate device, connected via PCIe or SATA             │
+│  Used as: swap space (virtual memory overflow)                     │
+└────────────────────────────────────────────────────────────────────┘
+```
+
+### How Cache Works — Locality of Reference
+
+Cache works because programs exhibit **locality of reference** — two predictable patterns:
+
+**Temporal locality** — if you access a memory address, you are likely to access it again soon. Variables in a loop are accessed thousands of times. The loop counter sits in cache the whole time.
+
+**Spatial locality** — if you access address X, you are likely to access addresses near X soon. An array is accessed sequentially. When you read element 5, the cache prefetches elements 6, 7, 8... into cache in the same cache line.
+
+```
+Cache line = the unit of data transferred between cache levels
+  Typically 64 bytes (8 × 64-bit values)
+  When you access one byte, the entire 64-byte cache line is loaded
+  Neighbouring bytes come along for free
+
+Example: iterating an int array (4 bytes each):
+  Access array[0]:
+    Cache miss — load 64-byte cache line (covers array[0] through array[15])
+  Access array[1]: cache hit (already in cache from previous load)
+  Access array[2]: cache hit
+  ...
+  Access array[15]: cache hit
+  Access array[16]: cache miss — load next 64-byte line
+  
+  Result: 2 cache misses for 16 accesses = 87.5% hit rate
+  
+Example: accessing every 17th element:
+  Access array[0]: cache miss
+  Access array[17]: cache miss (different cache line)
+  Access array[34]: cache miss
+  Access every element: 100% cache misses
+  Performance can be 10-50× worse than sequential access
+```
+
+### Cache in Your System
+
+```bash
+# See your CPU's cache sizes
+lscpu | grep -i cache
+# L1d cache: 32K   (L1 data cache per core)
+# L1i cache: 32K   (L1 instruction cache per core)
+# L2 cache:  256K  (per core)
+# L3 cache:  8192K (shared across all cores = 8MB)
+
+# More detail
+cat /sys/devices/system/cpu/cpu0/cache/index*/size
+cat /sys/devices/system/cpu/cpu0/cache/index*/type
+
+# See cache miss statistics for a program
+perf stat -e cache-misses,cache-references ls
+# cache-references: how many times cache was consulted
+# cache-misses:     how many times it had to go to next level
+```
+
+---
+
+## Registers in Detail — Every Register in x86-64 and ARM64
+
+### x86-64 Register Set (Intel and AMD)
+
+The x86-64 architecture has 16 general-purpose 64-bit registers, plus several special-purpose registers.
+
+```
+General-purpose registers (64-bit):
+
+Name   Alias history        Primary conventional use
+────   ─────────────────    ─────────────────────────────────────────
+RAX    EAX (32) AX (16)    Accumulator — return value from functions
+RBX    EBX (32) BX (16)    Base — callee-saved (must be preserved)
+RCX    ECX (32) CX (16)    Counter — 4th argument, loop counters
+RDX    EDX (32) DX (16)    Data — 3rd argument, I/O operations
+RSI    ESI (32) SI (16)    Source Index — 2nd argument, string source
+RDI    EDI (32) DI (16)    Destination — 1st argument, string dest
+RSP    ESP (32) SP (16)    Stack Pointer — top of current stack
+RBP    EBP (32) BP (16)    Base Pointer — base of current stack frame
+R8     R8D (32) R8W (16)   5th function argument
+R9     R9D (32) R9W (16)   6th function argument
+R10    R10D                 Caller-saved scratch register
+R11    R11D                 Caller-saved scratch register
+R12    R12D                 Callee-saved scratch register
+R13    R13D                 Callee-saved scratch register
+R14    R14D                 Callee-saved scratch register
+R15    R15D                 Callee-saved scratch register
+
+Each 64-bit register contains its 32-bit, 16-bit and 8-bit versions:
+
+RAX (64-bit):  [63.....32][31..16][15..8][7..0]
+EAX (32-bit):             [31..........8][7..0]
+AX  (16-bit):                            [15..8][7..0]
+AH  (8-bit):                             [15..8]       <- high byte of AX
+AL  (8-bit):                                    [7..0] <- low byte of AX
+
+Writing to EAX zeroes the upper 32 bits of RAX (x86-64 quirk)
+Writing to AX, AH, AL does NOT zero upper bits
+```
+
+Special-purpose registers:
+
+```
+RIP    Instruction Pointer (Program Counter)
+       Always points to the NEXT instruction to execute
+       Cannot be read/written directly in most instructions
+       Changed by: JMP, CALL, RET, conditional branches
+
+RFLAGS Flags register — condition codes from last operation
+       ZF (Zero Flag):     set if last result was zero
+       CF (Carry Flag):    set if last operation carried out of top bit
+       SF (Sign Flag):     set if last result was negative
+       OF (Overflow Flag): set if last result overflowed signed range
+       IF (Interrupt Flag):set if interrupts are enabled (ring 0 only)
+       DF (Direction Flag):controls string operation direction
+
+Segment registers (historical, mostly unused in 64-bit):
+       CS (Code Segment):  holds CPL in low 2 bits (the ring level)
+       DS, ES, FS, GS, SS: data and stack segments
+
+Control registers (ring 0 only):
+       CR0: CPU mode flags (protected mode enable, paging enable)
+       CR2: holds address that caused last page fault
+       CR3: physical address of current page table (PML4)
+       CR4: CPU feature flags (PAE, PSE, VME, etc.)
+
+Model-Specific Registers (MSRs — ring 0 only):
+       IA32_LSTAR (0xC0000082): SYSCALL entry point address
+       IA32_APIC_BASE: local APIC base address
+       FS.base, GS.base: base addresses for FS/GS segment registers
+                         used for thread-local storage
+```
+
+### System Call Calling Convention on x86-64
+
+When a program makes a system call, registers have specific roles:
+
+```
+Register   Role in system call
+────────   ────────────────────────────────
+RAX        System call number (what to do)
+RDI        Argument 1
+RSI        Argument 2
+RDX        Argument 3
+R10        Argument 4 (note: not RCX as in function calls)
+R8         Argument 5
+R9         Argument 6
+RAX        Return value (after syscall returns)
+RCX        Destroyed by SYSCALL (saved RIP)
+R11        Destroyed by SYSCALL (saved RFLAGS)
+
+Example: write(1, "hello", 5)
+  MOV RAX, 1      <- syscall number 1 = write
+  MOV RDI, 1      <- fd = 1 (stdout)
+  MOV RSI, msg    <- pointer to "hello" string
+  MOV RDX, 5      <- 5 bytes to write
+  SYSCALL         <- cross ring 3 -> ring 0
+```
+
+### Function Calling Convention on x86-64 (System V ABI)
+
+When a C function is called, the compiler follows this convention:
+
+```
+Register   Role in function call          Preserved across call?
+────────   ──────────────────────────     ─────────────────────
+RDI        1st argument                   NO (caller-saved)
+RSI        2nd argument                   NO
+RDX        3rd argument                   NO
+RCX        4th argument                   NO
+R8         5th argument                   NO
+R9         6th argument                   NO
+RAX        Return value                   NO
+RBX        Callee must preserve           YES (callee-saved)
+RBP        Callee must preserve           YES
+R12-R15    Callee must preserve           YES
+RSP        Stack pointer                  YES (by ABI contract)
+RIP        Next instruction               (managed automatically)
+
+Caller-saved: caller must save these before the call if it needs them
+Callee-saved: called function must save and restore these before returning
+```
+
+### ARM64 Register Set (AArch64)
+
+ARM64 has 31 general-purpose 64-bit registers named X0-X30, plus several special-purpose registers.
+
+```
+General-purpose registers (64-bit Xn, or 32-bit Wn for lower half):
+
+Register   AArch64 Role
+────────   ──────────────────────────────────────────────────
+X0         Argument 1 / Return value
+X1         Argument 2 / 2nd return value
+X2         Argument 3
+X3         Argument 4
+X4         Argument 5
+X5         Argument 6
+X6         Argument 7
+X7         Argument 8
+X8         Indirect result register / syscall number
+X9-X15     Caller-saved temporary registers
+X16-X17    Intra-procedure-call scratch (linker uses these)
+X18        Platform register (OS-specific use)
+X19-X28    Callee-saved registers (function must preserve)
+X29        Frame Pointer (equivalent to x86 RBP)
+X30        Link Register — return address for function calls
+           (equivalent to what x86 pushes on stack with CALL)
+XZR/WZR    Zero register — always reads as 0, writes discarded
+
+Special-purpose registers:
+SP         Stack Pointer (not X31 — separate register)
+PC         Program Counter (not directly accessible)
+PSTATE     Processor state (equivalent to RFLAGS)
+           N = Negative, Z = Zero, C = Carry, V = Overflow
+
+ARM64 system registers (accessed via MRS/MSR instructions):
+SCTLR_EL1  System Control Register (MMU enable, cache enable)
+TTBR0_EL1  Translation Table Base Register 0 (user page table)
+TTBR1_EL1  Translation Table Base Register 1 (kernel page table)
+ESR_EL1    Exception Syndrome Register (why did an exception occur)
+FAR_EL1    Fault Address Register (address that caused page fault)
+ELR_EL1    Exception Link Register (return address from exception)
+SPSR_EL1   Saved Program Status Register (saved PSTATE)
+```
+
+### ARM64 System Call Convention
+
+```
+Register   Role
+────────   ────────────────────────
+X8         System call number
+X0         Argument 1 / Return value
+X1         Argument 2
+X2         Argument 3
+X3         Argument 4
+X4         Argument 5
+X5         Argument 6
+SVC #0     The system call instruction (supervisor call)
+```
+
+### Key Differences Between x86-64 and ARM64 Registers
+
+```
+x86-64:                              ARM64:
+  16 general-purpose registers         31 general-purpose registers
+  Irregular historical names           Regular names X0-X30
+  (RAX,RBX,RCX,RDX,RSI,RDI,RSP,RBP)
+  Return address pushed to stack       Return address in X30 (link reg)
+  No dedicated zero register           XZR always zero (useful for clears)
+  RIP is instruction pointer           PC not directly accessible
+  SYSCALL instruction                  SVC instruction
+  Syscall number in RAX                Syscall number in X8
+  First 6 args in RDI,RSI,RDX,        First 8 args in X0-X7
+    RCX,R8,R9
+
+Common: both use registers for function arguments, both have a stack
+pointer, both have a flags/status register for condition codes.
+```
+
+---
+
+## Virtual Memory and Page Tables — The Address Translation Layer
+
+When a program runs, it uses **virtual addresses** — addresses in its own private address space that do not correspond directly to physical RAM locations. The CPU transparently translates virtual addresses to physical addresses before accessing RAM.
+
+### Why Virtual Memory Exists
+
+Without virtual memory, every program would need to be loaded at a fixed physical address. Two programs could not use the same address. A program would need to know at compile time exactly where in RAM it would live. Programs larger than physical RAM could not run.
+
+Virtual memory solves all of this by giving each process a private address space. Every process sees a full 64-bit address space as if it owns all of it. The kernel manages the mapping from each process's virtual addresses to actual physical RAM.
+
+```
+Without virtual memory:
+  Program A compiled to run at physical address 0x10000
+  Program B compiled to run at physical address 0x10000
+  CONFLICT — they cannot both run simultaneously at that address
+
+With virtual memory:
+  Program A uses virtual address 0x10000 -> maps to physical 0x50000
+  Program B uses virtual address 0x10000 -> maps to physical 0x80000
+  Both use the same virtual address, different physical RAM
+  Neither knows about the other
+```
+
+### The Memory Management Unit (MMU)
+
+The **MMU (Memory Management Unit)** is a hardware component inside the CPU that performs address translation. Every single memory access — every instruction fetch, every data read, every data write — goes through the MMU.
+
+```
+Program accesses virtual address 0x00401234:
+         |
+         v
+MMU receives: virtual address 0x00401234
+MMU splits the address into parts:
+  bits 47-39: PML4 index  (top-level page table)
+  bits 38-30: PDPT index  (second level)
+  bits 29-21: PD index    (third level)
+  bits 20-12: PT index    (fourth level — page table entry)
+  bits 11-0:  Page offset (offset within the 4KB page)
+
+MMU walks the page table tree in RAM:
+  1. Read CR3 register -> physical address of PML4 table
+  2. Use PML4 index -> get physical address of PDPT table
+  3. Use PDPT index -> get physical address of PD table
+  4. Use PD index   -> get physical address of PT table
+  5. Use PT index   -> get page table entry (PTE)
+  6. PTE contains:  physical page address + flags
+  7. Add page offset to physical page address
+  8. Result: physical address 0x00A01234
+
+MMU sends physical address 0x00A01234 to memory controller
+Memory controller fetches the byte
+Returns to CPU
+```
+
+This walk happens for every memory access. It would be impossibly slow if done in RAM every time. The CPU has a **TLB (Translation Lookaside Buffer)** — a small cache of recent virtual-to-physical translations.
+
+```
+TLB — Translation Lookaside Buffer:
+  Small fast cache inside the MMU
+  Stores recently used virtual->physical translations
+  Typically holds 64-1024 entries
+  Hit rate: typically 99%+ (due to spatial and temporal locality)
+
+TLB hit:  virtual address -> TLB -> physical address (1-2 cycles)
+TLB miss: virtual address -> TLB miss -> page table walk -> physical
+          Page table walk: 4 memory accesses = 400-1200 cycles
+          Result stored in TLB for next access
+```
+
+### Page Table Entries — What the Flags Mean
+
+Each page table entry is 8 bytes on x86-64. The physical address occupies bits 51-12. The remaining bits are flags:
+
+```
+Page table entry flags (x86-64):
+
+Bit  Name           Meaning
+─── ──────────────  ──────────────────────────────────────────────
+0   Present (P)     1 = page is in RAM, 0 = page not present (fault)
+1   Read/Write (R/W)0 = read-only, 1 = read-write
+2   User/Super (U/S)0 = kernel only (ring 0), 1 = user accessible (ring 3)
+3   Write-Through   Cache write policy
+4   Cache Disable   1 = do not cache this page
+5   Accessed (A)    Set by hardware when page is read
+6   Dirty (D)       Set by hardware when page is written
+7   Page Size (PS)  1 = this entry maps a 2MB page (huge page)
+8   Global          1 = don't flush from TLB on process switch
+62  No-Execute (NX) 1 = cannot execute code from this page (the NX bit)
+
+Key security flags:
+  U/S bit: if 0, ring 3 cannot access this page -> kernel protection
+  NX bit:  if 1, CPU refuses to execute from this page -> stack/heap protection
+  R/W bit: if 0, writing causes page fault -> read-only code protection
+```
+
+---
+
+## Page Faults — What Happens When Address Translation Fails
+
+A **page fault** is a CPU exception that occurs when the MMU cannot translate a virtual address. It is not necessarily an error — it is a normal mechanism the OS uses to implement several features.
+
+### Types of Page Faults
+
+```
+Page fault occurs when:
+  1. Present bit = 0 in the page table entry
+     The page is not currently in RAM
+  2. Access violates flags (write to read-only, ring 3 access to ring 0 page)
+  3. Address is not mapped at all (no page table entry)
+
+When a page fault occurs:
+  1. CPU saves current state (registers, instruction pointer)
+  2. CPU loads CR2 register with the faulting virtual address
+  3. CPU jumps to the page fault handler (kernel code)
+  4. Kernel examines the fault
+  5. Kernel decides what to do
+  6. Kernel returns — CPU resumes where it left off (or kills process)
+```
+
+### What the Kernel Does With Each Type
+
+```
+Case 1 — Page not present, but in the swap file:
+  Kernel finds the page in swap (on disk)
+  Kernel allocates a physical RAM frame
+  Kernel reads the page from disk into RAM
+  Kernel updates the page table entry (Present=1, physical address)
+  Kernel returns from fault handler
+  CPU retries the instruction — now succeeds
+  From the program's perspective: nothing happened (slightly slower)
+  This is demand paging — pages loaded from disk only when accessed
+
+Case 2 — Copy-on-write page (fork() optimization from Chapter 10):
+  Process A and Process B share a physical page (marked read-only)
+  Process A writes to the page -> page fault (write to read-only)
+  Kernel: this is a COW page, not a real error
+  Kernel copies the page to a new physical frame
+  Kernel updates Process A's page table to point to new frame
+  Kernel marks the new frame as writable
+  Kernel returns from fault handler
+  CPU retries the write — now succeeds on the private copy
+  Process B still uses the original shared page
+
+Case 3 — Stack growth:
+  Program accesses address just below its current stack
+  No page table entry exists yet
+  Kernel: this is a valid stack extension
+  Kernel allocates a new physical page
+  Kernel creates a page table entry for this new stack page
+  Kernel returns
+  CPU retries — stack now extended
+
+Case 4 — Access violation (segfault):
+  Program accesses address 0x00000000 (null pointer dereference)
+  Or accesses kernel memory from ring 3
+  Or writes to a read-only page
+  Kernel: this is an illegal access
+  Kernel sends SIGSEGV to the process
+  Process dies with "Segmentation fault"
+  This is the kernel enforcing memory protection
+
+Case 5 — mmap lazy loading:
+  Program called mmap() to map a file
+  Kernel created page table entries but marked them not-present
+  Program first accesses a mapped address -> page fault
+  Kernel: loads the file page from disk
+  Kernel updates page table entry
+  CPU retries — now reads file data from RAM
+  File data never loaded until the moment it is needed
+```
+
+```bash
+# See page fault statistics for your system
+vmstat 1 5
+# pgfault column: minor faults (COW, stack growth, already in RAM)
+# pgmajfault: major faults (required disk read)
+
+# See page faults for a specific program
+/usr/bin/time -v ls 2>&1 | grep "page faults"
+# Major (requiring I/O): 0
+# Minor (reclaiming a frame): 247
+
+# See current page table mappings of your shell
+cat /proc/$$/maps
+# Shows: virtual address range, permissions, offset, device, inode, name
+# e.g.: 00400000-00401000 r-xp ... /bin/bash
+#       r-xp = read, exec, private (code segment — NX not set here, but no write)
+#       00401000-00402000 r--p ... /bin/bash
+#       r--p = read-only (data segment — read-only pages)
+```
+
+---
+
+## Virtual Memory Layout — How a Process Sees Memory
+
+Every process has a virtual address space divided into regions. On x86-64 Linux:
+
+```
+Virtual address space of a process (64-bit, simplified):
+
+0xFFFFFFFFFFFFFFFF  <- top of 64-bit space
+│                   
+│  KERNEL SPACE     <- kernel mapped here, U/S=0 (ring 3 cannot access)
+│  (upper half)       same kernel mapping in every process's page table
+│                   
+0xFFFF800000000000  <- kernel space begins (canonical upper half)
+
+  [gap — invalid addresses, accessing causes fault]
+
+0x00007FFFFFFFFFFF  <- top of user space (canonical upper half boundary)
+│
+│  STACK            <- grows downward
+│  (e.g. RSP starts near 0x00007FFF5FBFFFFF)
+│  each thread has its own stack
+│  
+│  [large gap — unmapped, accessing causes segfault]
+│
+│  HEAP             <- grows upward (brk() / mmap())
+│  (dynamically allocated memory — malloc lives here)
+│
+│  BSS SEGMENT      <- uninitialised global variables (zeroed)
+│
+│  DATA SEGMENT     <- initialised global variables
+│
+│  TEXT SEGMENT     <- your compiled code (NX=0 — executable)
+│                      (mapped read-only — NX=1 for stack/heap)
+│
+0x0000000000400000  <- typical ELF load address (with ASLR: randomised)
+
+0x0000000000000000  <- address 0 = NULL (not mapped, accessing = segfault)
+```
+
+ASLR (Address Space Layout Randomisation from Chapter 15) randomises the starting addresses of the stack, heap, and loaded libraries. The kernel simply places each region at a different random offset when loading the process.
+
+---
+
+## TEE, OP-TEE, and Trusted Applications — Defined
+
+These terms appear in Chapter 03 (TrustZone) and Chapter 16 (Mobile) without definition. Here they are defined precisely.
+
+### TEE — Trusted Execution Environment
+
+A TEE is a secure, isolated execution environment that runs alongside the main operating system. It has its own memory, its own code, and hardware-enforced isolation from the normal OS.
+
+```
+TEE characteristics:
+  Runs in ARM TrustZone Secure World (or Intel SGX on x86)
+  Has its own memory region that Normal World cannot access
+  Has its own storage (secure storage — encrypted with device key)
+  The Normal World OS cannot read or modify TEE memory
+  Even a fully compromised Android/iOS cannot touch the TEE
+  Has a small trusted OS (like OP-TEE or Apple's sepOS)
+  Runs small isolated programs called Trusted Applications (TAs)
+```
+
+### OP-TEE — Open Portable Trusted Execution Environment
+
+OP-TEE is an **open-source TEE operating system** that runs in the ARM TrustZone Secure World. It is the TEE OS used in many Android devices.
+
+```
+OP-TEE in the system:
+
+Normal World (NS=1):               Secure World (NS=0):
+  Linux kernel (EL1)                 OP-TEE OS (EL1 Secure)
+  Android apps (EL0)                 Trusted Applications (EL0 Secure)
+
+OP-TEE provides:
+  A scheduler for Trusted Applications
+  Secure storage API (encrypted with device key)
+  Cryptography API (AES, RSA, ECC, etc.)
+  Memory management for Secure World
+  A GlobalPlatform TEE API (standardised interface)
+
+Normal World calls OP-TEE via:
+  SMC instruction (Secure Monitor Call)
+  Goes through EL3 Secure Monitor
+  EL3 routes to OP-TEE OS in Secure World
+```
+
+### Trusted Application (TA)
+
+A Trusted Application is a small program that runs inside OP-TEE in the Secure World. Each TA handles one security-sensitive function.
+
+```
+Common Trusted Applications:
+
+Fingerprint TA:
+  Receives raw fingerprint sensor data directly
+  Runs matching algorithm inside Secure World
+  Returns only: "match" or "no match" to Normal World
+  Android never receives the biometric data
+
+Key Storage TA:
+  Generates cryptographic keys
+  Stores keys in secure storage (encrypted with device UID)
+  Performs crypto operations: sign, encrypt, decrypt
+  Keys never exported to Normal World
+
+Secure Boot TA:
+  Verifies signatures on firmware updates
+  Only accepts updates signed with manufacturer key
+  Normal World cannot bypass this check
+
+DRM TA:
+  Decrypts video content inside Secure World
+  Passes decrypted frames directly to display hardware
+  Normal World cannot capture decrypted video
+```
+
+### Apple Secure Enclave Processor (SEP) vs OP-TEE
+
+```
+OP-TEE (Android, most ARM devices):
+  Software TEE OS running on the main ARM cores in Secure World
+  TrustZone provides hardware isolation
+  Main AP cores switch between Normal/Secure World
+  Shared silicon with the application processor
+
+Apple SEP (iPhone, iPad):
+  Separate physical processor on the SoC die
+  Has its own ARM core, own RAM, own boot ROM
+  Runs sepOS (Apple's proprietary TEE OS)
+  Communicates with main AP via a restricted mailbox
+  Main AP cannot access SEP memory over any bus
+  Deeper hardware isolation than TrustZone alone
+
+Both hold:
+  Device UID key (burned in at manufacturing, never exported)
+  Biometric templates (fingerprint, face data)
+  Payment credentials
+  Cryptographic keys for storage encryption
+```
+
+---
+
+## The Complete Flow — From Transistor to Running Program
+
+Now every piece can be connected into one continuous flow. This is the answer to "where does everything sit?"
+
+```
+LAYER 1 — PHYSICS (Chapter 01)
+  Electrons flowing or not through silicon
+  High voltage = 1, Low voltage = 0
+  One wire = one bit
+
+LAYER 2 — TRANSISTORS (Chapter 01)
+  Silicon switches controlled by voltage
+  On = 1, Off = 0
+  Billions on one chip
+  Organised into logic gates
+
+LAYER 3 — LOGIC GATES (Chapter 01)
+  AND, OR, NOT, NAND, NOR, XOR
+  Combine transistors to make decisions
+  Pattern detector circuits (AND gate + NOT gates)
+  This is the hardware level — pure physics
+
+LAYER 4 — FUNCTIONAL UNITS (Chapter 01)
+  Gates combined into: ALU, registers, control unit, decoder, RAM
+  The decoder: 256 AND-gate pattern detectors for 8-bit opcodes
+  The ALU: adder circuits made from XOR and AND gates
+  Registers: flip-flop arrays wired to ALU directly
+  RAM: grid of storage cells with address decoder
+  This is still hardware — no software yet
+
+LAYER 5 — INSTRUCTION SET ARCHITECTURE (Chapter 02)
+  CPU designer decides: which bit patterns do what
+  Documents this in the ISA manual (the opcode table)
+  Hardware team wires the decoder to match the table
+  The decoder IS the ISA in silicon form
+  This is the boundary between hardware design and software design
+
+LAYER 6 — MACHINE CODE (Chapter 02, 06)
+  Raw binary bytes that the decoder recognises
+  The ONLY language the CPU actually executes
+  Everything above must eventually become machine code
+  Machine code lives in memory (RAM or cache)
+  The CPU fetches it, the decoder decodes it, the ALU executes it
+  This is the lowest software layer — bytes in memory
+
+LAYER 7 — ASSEMBLY LANGUAGE (Chapter 02, 06)
+  Human-readable names for machine code instructions
+  MOV, ADD, JMP, SYSCALL — mnemonics mapped 1:1 to opcodes
+  The ASSEMBLER (software tool) translates mnemonics to bytes
+  Assembly is a TEXT FORMAT living on disk (source file)
+  The assembler reads text, outputs binary machine code
+  This is a SOFTWARE TOOL layer, not a hardware layer
+
+LAYER 8 — THE C LANGUAGE AND COMPILER (Chapter 06)
+  Higher abstraction — types, functions, control flow
+  The COMPILER (software tool, e.g. GCC) translates C to assembly
+  Then the internal assembler translates assembly to machine code
+  C source lives on disk as text
+  The compiler runs on the CPU, reads text, produces binary
+  This is another SOFTWARE TOOL layer
+
+LAYER 9 — THE ELF BINARY (Chapter 06)
+  The compiled machine code wrapped in a container format
+  Contains: code section, data section, symbol table, metadata
+  Lives on disk as a file
+  The kernel loads it into RAM when you execute the program
+  Page tables map the ELF sections to virtual addresses
+
+LAYER 10 — THE OPERATING SYSTEM KERNEL (Chapters 03, 08-11)
+  Manages: processes, memory, file systems, devices, network
+  Lives in ring 0 (kernel mode)
+  System calls are the gate: ring 3 -> ring 0 -> ring 3
+  The kernel is itself a compiled C program loaded at boot
+
+LAYER 11 — USERSPACE PROGRAMS (Chapters 08-13)
+  Your programs, shells, daemons, servers
+  Run in ring 3 (user mode)
+  Use system calls to ask kernel for resources
+  Each has a virtual address space (page tables map virtual->physical)
+  Page faults handled transparently by kernel
+
+LAYER 12 — HIGH-LEVEL LANGUAGES AND RUNTIMES (Chapter 06)
+  Python, Java, JavaScript
+  Interpreted: interpreter (itself a compiled binary) reads source
+  JIT compiled: JIT compiler generates machine code at runtime
+  All ultimately produce machine code that runs on the CPU
+
+LAYER 13 — FORMAL LANGUAGES AND AUTOMATA (Chapter 05)
+  This layer is THEORETICAL — it describes and constrains tools
+  Regular expressions: described by finite automata (theoretical model)
+  Context-free grammars: described by pushdown automata
+  Used by: compiler lexers (regex/DFA), parsers (CFG/PDA)
+  Formal languages explain WHY certain tools work and others cannot
+  NOT a hardware layer — a mathematical framework for tool design
+```
+
+### Where Each Tool Sits
+
+```
+HARDWARE (silicon, gates, decoder, ALU, registers, RAM):
+  Transistors    -> physics
+  Logic gates    -> gate circuits
+  Decoder        -> pattern detector AND gates in control unit
+  ALU            -> combinational logic for arithmetic
+  Registers      -> flip-flop arrays wired to ALU
+  RAM            -> storage grid with address decoder
+  MMU            -> address translation hardware
+  TLB            -> translation cache hardware
+  Cache          -> fast SRAM close to CPU cores
+
+FIRMWARE (between hardware and software):
+  BIOS/UEFI      -> machine code in ROM chips, runs before OS
+  Microcode      -> internal micro-operations in modern CPUs
+                   translates x86-64 opcodes to internal uops
+
+SOFTWARE TOOLS (programs that run on the CPU to build other programs):
+  Assembler      -> reads assembly TEXT, outputs MACHINE CODE binary
+                   e.g. nasm, gas, as
+                   sits at: software level, produces layer 6 output
+  Compiler       -> reads C/C++/Rust TEXT, outputs MACHINE CODE binary
+                   e.g. GCC, Clang
+                   sits at: software level, produces layer 6 output
+  Linker         -> combines multiple machine code objects into one binary
+                   e.g. ld
+  Debugger       -> reads running machine code, shows human-readable state
+                   e.g. gdb, pwndbg
+
+THE OPERATING SYSTEM:
+  Kernel         -> ring 0, manages all hardware resources
+  System calls   -> the gate between ring 3 and ring 0
+  Scheduler      -> decides which process runs on which CPU core
+  VM manager     -> manages page tables, handles page faults
+  VFS            -> unified file interface (Chapter 08)
+
+RUNTIME ENVIRONMENTS:
+  glibc          -> C standard library, wraps system calls
+  Python runtime -> interpreter + garbage collector
+  JVM            -> Java Virtual Machine
+  ART            -> Android Runtime (DEX -> ARM64 AOT)
+
+FORMAL LANGUAGE THEORY (mathematics — not a software layer):
+  Describes: what patterns finite automata can recognise
+  Used by:   compiler designers when building lexers and parsers
+  Manifests as: regex engines (software), parser generators (software)
+  Does NOT run on hardware — it is a mathematical framework
+```
+
+### The Terminal and Assembler Distinction
+
+You asked specifically about the difference between terminals and assemblers in terms of converting human-readable input to machine code:
+
+```
+TERMINAL:
+  Role:    input/output device
+  Converts: keystrokes -> ASCII bytes -> sends to whatever program is running
+  Converts: bytes received from program -> characters displayed on screen
+  Does NOT: interpret commands, understand assembly, produce machine code
+  Sits at:  Layer 4 hardware era (ASR-33) or Layer 11 software era (PTY)
+  Knows about: bytes, character encoding, display control sequences
+  Does NOT know: opcodes, registers, machine code, programming languages
+
+ASSEMBLER:
+  Role:    translation tool (software program)
+  Converts: assembly source text -> machine code binary
+  Input:   text file containing mnemonic instructions (MOV, ADD, JMP)
+  Output:  binary file containing raw opcode bytes
+  Sits at:  Layer 7 (software tool)
+  Knows about: opcodes, instruction encoding, registers, addressing modes
+  Does NOT know: display, input handling, user interaction
+
+HOW THEY INTERACT HISTORICALLY:
+  1. Programmer types assembly source on teletype/terminal
+  2. Terminal sends ASCII bytes to the computer
+  3. Computer stores the bytes as a text file
+  4. Programmer runs the assembler program
+  5. Assembler reads the text file
+  6. Assembler looks up each mnemonic in its opcode table
+  7. Assembler outputs binary machine code
+  8. Machine code is loaded and executed by the CPU's decoder
+
+The terminal is the I/O interface.
+The assembler is the translation tool.
+Neither is the other. They never overlap.
+The terminal never sees opcodes.
+The assembler never handles display or input.
+```
+
+
+
+---
+
+# Chapter 03: The Instruction Set — Opcodes, Decoders and the First Programs
 
 Chapter 01 established that logic gates respond to bit patterns. This chapter answers what those bit patterns are, how the control unit recognises them, what an opcode is and where the word came from, what the difference is between a CPU's bit width and its opcode width, how the very first programs were written before any tools existed, and how programmers knew what streams of 0s and 1s meant when there was no screen, no ASCII, and no encoding standard.
 
@@ -2218,7 +3191,7 @@ The instruction set is the hardware contract that defines every trust boundary a
 -e 
 ---
 
-# Chapter 03: Protection Rings — Hardware-Enforced Privilege
+# Chapter 04: Protection Rings — Hardware-Enforced Privilege
 
 Chapters 01 and 02 explained the hardware and instruction set. Every program runs on the same CPU, using the same instructions. But not every program should be allowed to do everything. A user's web browser should not be able to read another user's files, disable interrupts, or modify the CPU's page tables. This chapter explains the hardware mechanism that enforces these boundaries — protection rings.
 
@@ -2689,7 +3662,7 @@ sudo grep -c "stac\|clac" /proc/kallsyms 2>/dev/null || echo "check objdump"
 -e 
 ---
 
-# Chapter 04: History and Philosophy — The ASR-33, Unix, C, BSD and Linux
+# Chapter 05: History and Philosophy — The ASR-33, Unix, C, BSD and Linux
 
 Before a single line of kernel code, before partitions and filesystems, before any of the technical machinery — there was a philosophy. That philosophy was shaped by a mechanical typewriter from 1963, two engineers in a Bell Labs office in 1969, a university research group in Berkeley, and a Finnish student in 1991. Understanding where Linux comes from explains why it works the way it does. Every design decision you will encounter in the rest of this document traces back to this chapter.
 
@@ -3801,7 +4774,7 @@ Your program writes the same `read()` call. The kernel routes it to the right im
 -e 
 ---
 
-# Chapter 05: Automata Theory, Formal Languages and Regular Expressions
+# Chapter 06: Automata Theory, Formal Languages and Regular Expressions
 
 Chapters 01-04 covered hardware and privilege. This chapter steps into the mathematical theory that underlies how computers recognise patterns, how compilers understand programming languages, how network protocols are verified, and how the text tools you use daily in cybersecurity actually work. The theory comes before the practice because understanding the mathematics makes the tools — and their limitations — completely clear.
 
@@ -4350,7 +5323,7 @@ Today:
 -e 
 ---
 
-# Chapter 06: How Code Works — Machine Code, Assembly, C and Compilers
+# Chapter 07: How Code Works — Machine Code, Assembly, C and Compilers
 
 The CPU executes machine code. Everything else — assembly, C, Python — is a layer of abstraction on top of that reality. Understanding how code gets from human-readable source to bytes the CPU executes is essential before we can understand how the kernel itself is built, and later how memory vulnerabilities work.
 
@@ -4632,7 +5605,7 @@ Characteristic: Portable (same bytecode runs anywhere the VM exists),
 -e 
 ---
 
-# Chapter 07: Storage — Hard Drives, Partitions and Filesystems
+# Chapter 08: Storage — Hard Drives, Partitions and Filesystems
 
 The CPU executes code, but that code and data must live somewhere permanently. Storage is the foundation everything else builds on — the kernel itself lives on disk, the filesystem organises it, and the partition structure defines the boundaries. This chapter establishes how physical storage is divided, organised and accessed.
 
@@ -4914,7 +5887,7 @@ The entire Kali installer ran from the Ventoy USB drive (shown as sdb), which is
 -e 
 ---
 
-# Chapter 08: The Kernel Interface — Everything is a File, Inodes and System Calls
+# Chapter 09: The Kernel Interface — Everything is a File, Inodes and System Calls
 
 We now have a CPU that executes code, storage that holds data, and a philosophy about how an operating system should work. This chapter is where those three threads meet. The kernel provides one unified interface to every resource on the system — files, devices, network connections, processes. Understanding that interface is the key to understanding everything that runs on Linux.
 
@@ -5262,7 +6235,7 @@ If you can restrict a process's system calls, you limit what damage it can do ev
 -e 
 ---
 
-# Chapter 09: File Descriptors — The Unified Handle for Everything
+# Chapter 10: File Descriptors — The Unified Handle for Everything
 
 System calls return file descriptors. Everything the kernel manages — files, sockets, pipes, devices, timers — is accessed through a file descriptor once opened. This small integer is the practical implementation of "everything is a file." Understanding file descriptors explains how shell redirection works, how pipes connect programs, and how sockets and network connections fit into the same model.
 
@@ -5377,7 +6350,7 @@ ls process:                  grep process:
 -e 
 ---
 
-# Chapter 10: The Process Model — Fork, Exec and the Process Tree
+# Chapter 11: The Process Model — Fork, Exec and the Process Tree
 
 We have a kernel interface and a file descriptor system. Now we need to understand how programs actually run — how they start, how they create other programs, and how the entire tree of running processes on your system came to exist. Fork and exec are the two system calls that make all of this happen. Every process on your machine — from systemd down to your shell — exists because of these two calls.
 
@@ -5646,7 +6619,7 @@ The entire Unix pipeline mechanism — arbitrary chains of programs communicatin
 -e 
 ---
 
-# Chapter 11: The Boot Chain — Power On to Login
+# Chapter 12: The Boot Chain — Power On to Login
 
 We now have all the building blocks: the Von Neumann CPU, machine code, storage, the kernel interface, file descriptors, fork and exec. The boot chain is where all of these come together in sequence. Starting from the moment electricity hits the CPU, this chapter traces every step until your shell prompt appears — and every step now makes sense because you understand what it is building toward.
 
@@ -5841,7 +6814,7 @@ Above it, Linux is the same code on everything.
 -e 
 ---
 
-# Chapter 12: Networking — Sockets, TCP and the BSD API
+# Chapter 13: Networking — Sockets, TCP and the BSD API
 
 Processes communicate with each other through file descriptors and pipes. Processes communicate across a network through sockets. A socket is a file descriptor — everything you learned about file descriptors applies. The socket API was designed at Berkeley in 1983 and has not changed since. Every networked program ever written in C, Python, Go, Java or any other language uses this same API underneath.
 
@@ -6075,7 +7048,7 @@ The advantage over TCP: no network stack overhead, no IP headers, no TCP handsha
 
 ---
 
-# Chapter 13: Network Defence — DDoS Protection and the Attack Surface
+# Chapter 14: Network Defence — DDoS Protection and the Attack Surface
 
 Now that you understand sockets and how servers accept connections, you can understand what a Distributed Denial of Service attack is actually doing — and more importantly, where to stop it. Every defence technique in this chapter maps directly to the networking concepts in the previous chapter.
 
@@ -6272,7 +7245,7 @@ findtime = 600    # failures counted within ten minutes
 -e 
 ---
 
-# Chapter 14: Service Sandboxing — Isolating Services from the OS
+# Chapter 15: Service Sandboxing — Isolating Services from the OS
 
 A server that handles network connections runs multiple services. Each service is a process with file descriptors, system calls and access to the filesystem. Sandboxing is the practice of restricting what a process can see and do — using the exact kernel mechanisms you now understand: namespaces that isolate the filesystem and network views, system call filters that restrict what the kernel allows, and file descriptor control that limits what resources a service can access.
 
@@ -6492,7 +7465,7 @@ sudo apparmor_parser -r /etc/apparmor.d/usr.bin.payment-api
 -e 
 ---
 
-# Chapter 15: Memory Vulnerabilities — Buffer Overflows and Beyond
+# Chapter 16: Memory Vulnerabilities — Buffer Overflows and Beyond
 
 This is where everything comes together from the offensive side. Memory vulnerabilities exist because programs run in the Von Neumann memory model you learned in Chapter 2, are written in C compiled to machine code from Chapter 3, run as processes created by fork and exec from Chapter 7, and make system calls through the kernel interface from Chapter 5. The return address on the stack is the address the CPU will fetch-decode-execute next — which you understand from Chapter 2. Every concept in this chapter is a direct consequence of everything that came before it.
 
@@ -7380,7 +8353,7 @@ strace -e trace=clone,execve bash
 -e 
 ---
 
-# Chapter 16: Mobile Architecture — From Battery to Baseband
+# Chapter 17: Mobile Architecture — From Battery to Baseband
 
 Every concept in this document applies to mobile devices. The same transistors, the same logic gates, the same instruction sets, the same Von Neumann fetch-decode-execute cycle. But mobile adds one constraint that changes every engineering decision: the device must run on a small battery for hours or days. This single requirement reshapes the entire hardware and software stack from the silicon up.
 
