@@ -1,33 +1,87 @@
 # Computer-Architecture
 
 # Linux Systems & Security Masterclass
-### The Complete Computing Journey — From Logic Gates to Modern Exploitation
+### The Complete Computing Journey — From Electrons to Modern Exploitation
+
+---
+
+## How This Document Is Organised
+
+This document builds knowledge in strict order. Each part depends on the one before it. Every concept is defined before it is used.
+
+**Part I — The Physical Foundation:** What computers are made of at the hardware level. Electrons, transistors, gates, and the CPU itself.
+
+**Part II — The Instruction Bridge:** How hardware and software meet. Opcodes, registers, virtual memory — the layer where silicon becomes programmable.
+
+**Part III — The Software Foundation:** How human-readable code becomes machine code. Assembly, compilers, and the ELF binary format.
+
+**Part IV — The Operating System:** What the kernel is, what the OS is, how privilege works, and how user programs talk to the kernel.
+
+**Part V — The Unix Philosophy:** The history and design decisions that shaped every Linux system. The terminal, shell, prompt, and filesystem philosophy.
+
+**Part VI — The Runtime:** How programs actually run. Storage, file descriptors, processes, and the boot chain.
+
+**Part VII — Networking and Communication:** Sockets, TCP, formal languages, and how programs communicate over networks.
+
+**Part VIII — Security:** Network defence, service isolation, and memory exploitation from buffer overflows to modern ROP chains.
+
+**Part IX — Mobile:** The complete mobile architecture from battery constraint to baseband security.
 
 ---
 
 ## Table of Contents
 
-1. [Logic Gates & Von Neumann — The Physical and Architectural Foundation](#chapter-01)
-2. [Memory, Addresses, Registers and the Memory Hierarchy](#chapter-02)
-3. [The Instruction Set — Opcodes, Decoders and the First Programs](#chapter-03)
-4. [Protection Rings — Hardware-Enforced Privilege](#chapter-04)
-5. [History & Philosophy — The ASR-33, Unix, C, BSD and Linux](#chapter-05)
-6. [Automata Theory, Formal Languages and Regular Expressions](#chapter-06)
-7. [How Code Works — Machine Code, Assembly, C and Compilers](#chapter-07)
-8. [Storage — Hard Drives, Partitions and Filesystems](#chapter-08)
-9. [The Kernel Interface — Everything is a File, Inodes and System Calls](#chapter-09)
-10. [File Descriptors — The Unified Handle for Everything](#chapter-10)
-11. [The Process Model — Fork, Exec and the Process Tree](#chapter-11)
-12. [The Boot Chain — Power On to Login](#chapter-12)
-13. [Networking — Sockets, TCP and the BSD API](#chapter-13)
-14. [Network Defence — DDoS Protection and the Attack Surface](#chapter-14)
-15. [Service Sandboxing — Isolating Services from the OS](#chapter-15)
-16. [Memory Vulnerabilities — Buffer Overflows and Beyond](#chapter-16)
-17. [Mobile Architecture — From Battery to Baseband](#chapter-17)
+### Part I — The Physical Foundation
+1. [From Electrons to Logic Gates](#chapter-01)
+2. [From Gates to a Working CPU](#chapter-02)
+3. [Memory — RAM, Cache, Addresses and the Memory Hierarchy](#chapter-03)
+
+### Part II — The Instruction Bridge
+4. [The Instruction Set — Opcodes, Decoders and ISA](#chapter-04)
+5. [Virtual Memory — Pages, Page Tables, MMU and Page Faults](#chapter-05)
+
+### Part III — The Software Foundation
+6. [How Code Becomes Machine Code — Assembly, C and Compilers](#chapter-06)
+7. [The Complete Flow — From Transistor to Running Program](#chapter-07)
+
+### Part IV — The Operating System
+8. [The Kernel and the OS — What They Are and Where They Live](#chapter-08)
+9. [Protection Rings — Hardware-Enforced Privilege](#chapter-09)
+10. [System Calls and Function Calls — The Precise Difference](#chapter-10)
+
+### Part V — The Unix Philosophy
+11. [History and Philosophy — ASR-33, Unix, C, BSD and Linux](#chapter-11)
+12. [Terminal, Shell and Prompt — The Complete Distinction](#chapter-12)
+13. [Everything is a File — Inodes, VFS, System Calls](#chapter-13)
+
+### Part VI — The Runtime
+14. [Storage — Partitions, Filesystems and LVM](#chapter-14)
+15. [File Descriptors — The Unified Handle for Everything](#chapter-15)
+16. [The Process Model — Fork, Exec and the Process Tree](#chapter-16)
+17. [The Boot Chain — Power On to Login](#chapter-17)
+
+### Part VII — Networking and Communication
+18. [Automata Theory, Formal Languages and Regular Expressions](#chapter-18)
+19. [Networking — Sockets, TCP, BSD API and Reverse Shells](#chapter-19)
+
+### Part VIII — Security
+20. [Network Defence — DDoS Protection and the Attack Surface](#chapter-20)
+21. [Service Sandboxing — Isolating Services from the OS](#chapter-21)
+22. [Memory Vulnerabilities — Buffer Overflows and Beyond](#chapter-22)
+
+### Part IX — Mobile
+23. [Mobile Architecture — From Battery to Baseband](#chapter-23)
 
 ---
 
-# Chapter 01: Logic Gates and Von Neumann — The Physical and Architectural Foundation
+-e 
+---
+
+## Part I — The Physical Foundation
+
+*Chapters 1-3 cover what computers are made of at the hardware level. No software yet. Pure physics, circuits and silicon. Every concept in later chapters traces back to this foundation.*
+
+# Chapter 1: From Electrons to Logic Gates
 
 Before a single line of code, before binary numbers, before any instruction set — there is physics. Every computation that has ever happened on any computer anywhere in the world ultimately reduces to electrons flowing or not flowing through physical material. Understanding this foundation makes everything else in this document not just comprehensible but inevitable. The complexity of a modern operating system is not magic — it is an enormous number of extremely simple physical switches, arranged very cleverly.
 
@@ -768,7 +822,10 @@ The fixed starting address is why the boot chain in Chapter 10 works automatical
 -e 
 ---
 
-# Chapter 02: Memory, Addresses, Registers and the Memory Hierarchy
+-e 
+---
+
+# Chapter 2: From Gates to a Working CPU and Memory Hierarchy
 
 Chapter 01 established that the CPU contains registers and RAM is a grid of flip-flops. This chapter fills the gap between those hardware facts and everything the rest of the document assumes — what a memory address actually is, how registers differ from RAM, why the memory hierarchy exists, and how virtual memory and page tables work. These concepts are mentioned throughout the document (page tables in rings, page faults in memory vulnerabilities, TEE in mobile) but never defined from scratch. This chapter defines them all.
 
@@ -1740,7 +1797,1204 @@ The assembler never handles display or input.
 
 ---
 
-# Chapter 03: The Instruction Set — Opcodes, Decoders and the First Programs
+-e 
+---
+
+# Chapter 3: Memory Addresses, Pages, Virtual Memory and the Hardware-Software Map
+
+This chapter exists because the previous chapters introduced concepts that need to be grounded more precisely. Every term used loosely elsewhere is defined exactly here. Read this chapter before Chapter 04 and every reference in later chapters will be fully clear.
+
+---
+
+## What Is a Page — The Unit of Memory Management
+
+A **page** is a fixed-size block of memory. It is the fundamental unit the operating system uses to manage memory. Everything about virtual memory, page tables, page faults, and memory protection operates in units of pages — never individual bytes.
+
+### Why Pages Exist
+
+Managing memory byte by byte would require enormous data structures. A system with 8GB of RAM has 8 billion bytes. If the OS tracked permissions and mappings for every individual byte, the page table alone would consume all of RAM. Instead, the OS groups bytes into pages and tracks permissions per page.
+
+### Page Size
+
+On x86-64 and ARM64, the standard page size is **4096 bytes (4 KB)**. This is fixed by the CPU architecture. Every page starts at an address divisible by 4096.
+
+```
+4096 bytes = 4 KB = one page
+
+Page boundaries:
+  Address 0x00000000 to 0x00000FFF = page 0     (4096 bytes)
+  Address 0x00001000 to 0x00001FFF = page 1     (4096 bytes)
+  Address 0x00002000 to 0x00002FFF = page 2     (4096 bytes)
+  ...
+
+Any address split into two parts:
+  Page number = address >> 12    (upper bits identify which page)
+  Page offset = address & 0xFFF  (lower 12 bits = position within page)
+
+Example: address 0x00401A34
+  Page number: 0x00401A34 >> 12 = 0x401      (page 1025)
+  Page offset: 0x00401A34 & 0xFFF = 0xA34    (byte 2612 within the page)
+```
+
+### Three Distinct Page Concepts
+
+These three terms are related but different:
+
+```
+VIRTUAL PAGE:
+  A 4KB block in a process's virtual address space
+  Identified by a virtual page number
+  May or may not have physical RAM backing it
+  Exists in the address space even when not in RAM
+  Example: page at virtual address 0x401000
+
+PHYSICAL PAGE (also called PAGE FRAME):
+  A 4KB block of actual physical RAM chips
+  Identified by a physical frame number (PFN)
+  What the RAM physically contains
+  A finite resource — you only have as many as you have RAM
+  Example: physical frame at address 0x3A000 in RAM
+
+PAGE TABLE ENTRY (PTE):
+  The mapping connecting one virtual page to one physical frame
+  Contains: physical frame number + permission flags
+  Stored in RAM (in kernel-controlled memory)
+  Managed by the kernel, read by the MMU hardware
+```
+
+```
+How they connect:
+
+Process virtual address space:        Physical RAM:
+  Virtual page 0  ─────────────────►  Physical frame 47
+  Virtual page 1  ─────────────────►  Physical frame 123
+  Virtual page 2  ─────────────────►  (not in RAM — on disk)
+  Virtual page 3  ─────────────────►  Physical frame 8
+  ...                                 ...
+
+Page table (in RAM, managed by kernel):
+  Entry for vpage 0: PFN=47, Present=1, RW=1, User=1
+  Entry for vpage 1: PFN=123, Present=1, RW=0, User=1
+  Entry for vpage 2: Present=0  <- page is on disk, not in RAM
+  Entry for vpage 3: PFN=8, Present=1, RW=1, User=0
+```
+
+### Where Pages Physically Live
+
+```
+Virtual pages:   in the concept space — they are numbers in a mapping
+                 They have no physical existence by themselves
+
+Physical frames: inside the RAM chips on the motherboard
+                 (or on-package RAM for mobile — LPDDR)
+                 4KB blocks within the DRAM grid
+
+Page tables:     in physical RAM, in a region the kernel controls
+                 The kernel allocates physical frames to hold page tables
+                 These frames are marked kernel-only (U/S=0)
+                 The process cannot read its own page table
+
+Swap:            on the storage device (SSD or HDD)
+                 When RAM is full, the kernel moves physical frames
+                 to the swap partition/file to free RAM for other uses
+                 The page table entry is updated: Present=0, location=swap
+```
+
+### The Full Picture — Where a Variable Lives
+
+When your C program declares `int x = 5;`:
+
+```
+Source code (text file on disk):
+  int x = 5;
+
+After compilation (ELF binary on disk):
+  .data section contains: 05 00 00 00 (4 bytes, little-endian)
+
+After program starts (in RAM):
+  Kernel loads ELF into memory
+  Virtual page at address 0x601000 maps to physical frame 234
+  Physical frame 234 in RAM contains: 05 00 00 00 at some offset
+  Page table entry for virtual page 0x601: PFN=234, present=1
+
+When your code reads x:
+  CPU generates virtual address, e.g. 0x601008
+  MMU splits: page 0x601, offset 0x008
+  MMU looks up page 0x601 in TLB -> hit -> physical frame 234
+  Physical address: 234 * 4096 + 8 = 0xEA008
+  Memory controller reads 4 bytes from RAM address 0xEA008
+  Returns 0x00000005 to the CPU register
+
+When the program exits:
+  Kernel marks physical frame 234 as free
+  The page table for this process is deleted
+  Physical frame 234 can now be given to another process
+  The variable x is gone
+```
+
+---
+
+## What Is the Kernel — Precise Definition
+
+The **kernel** is the core of an operating system. It is a compiled C program that runs in ring 0 (CPU privilege level 0) and manages all hardware resources on behalf of user programs.
+
+The kernel is NOT the entire operating system. It is the privileged core component.
+
+### What the Kernel Actually Contains
+
+```
+The Linux kernel is a single large program. Inside it:
+
+┌─────────────────────────────────────────────────────────────┐
+│                      LINUX KERNEL                           │
+│                                                             │
+│  Process Scheduler                                          │
+│    Decides which process runs on which CPU core             │
+│    Switches between processes (context switching)           │
+│    Implements: CFS (Completely Fair Scheduler)              │
+│                                                             │
+│  Memory Manager                                             │
+│    Allocates and frees physical frames                      │
+│    Creates and destroys page tables                         │
+│    Handles page faults                                      │
+│    Manages swap (moving pages to/from disk)                 │
+│    Implements: buddy allocator, slab allocator              │
+│                                                             │
+│  Virtual Filesystem (VFS)                                   │
+│    Unified interface over all filesystem types              │
+│    Implements: file descriptors, inodes, directory entries  │
+│    Plugs in: ext4, xfs, btrfs, tmpfs, procfs, sysfs        │
+│                                                             │
+│  Network Stack                                              │
+│    Implements: TCP/IP, UDP, routing, netfilter/iptables     │
+│    Socket interface (Chapter 13)                            │
+│    Network device drivers                                   │
+│                                                             │
+│  Device Drivers                                             │
+│    Code that talks directly to hardware                     │
+│    Storage drivers (NVMe, SATA, USB mass storage)           │
+│    Network drivers (Ethernet, WiFi)                         │
+│    GPU drivers (DRM/KMS)                                    │
+│    Input drivers (keyboard, mouse, touchscreen)             │
+│                                                             │
+│  Interrupt Handler                                          │
+│    Responds to hardware interrupts (Chapter 17)             │
+│    Routes interrupts to correct driver                      │
+│                                                             │
+│  System Call Interface                                      │
+│    The gate from ring 3 to ring 0                           │
+│    ~400 system calls (open, read, write, fork, exec...)     │
+│                                                             │
+│  Security Subsystem                                         │
+│    SELinux, AppArmor, seccomp, capabilities                 │
+│    Namespace isolation (containers)                         │
+│                                                             │
+│  Inter-Process Communication (IPC)                          │
+│    Pipes, signals, shared memory, message queues            │
+│    Unix domain sockets                                      │
+└─────────────────────────────────────────────────────────────┘
+```
+
+The kernel lives in memory at all times. When you boot Linux, the kernel is loaded into RAM and stays there until shutdown. It occupies roughly 10-100MB of RAM depending on loaded modules.
+
+### What Is a Kernel Module
+
+The kernel has a monolithic core but many parts are loadable as **modules** — chunks of kernel code that can be loaded and unloaded at runtime without rebooting:
+
+```bash
+# See loaded kernel modules
+lsmod
+
+# Load a module
+sudo modprobe nvidia          # load NVIDIA GPU driver
+
+# Unload a module
+sudo modprobe -r nouveau      # unload nouveau driver
+
+# See where the kernel lives in memory
+cat /proc/iomem | grep "Kernel"
+
+# See kernel version
+uname -r
+# 6.5.0-28-generic
+
+# The kernel binary on disk
+ls -lh /boot/vmlinuz-$(uname -r)
+```
+
+---
+
+## What Is the Operating System — Kernel vs OS
+
+The **operating system** is a broader concept than the kernel. The OS includes everything that makes the computer usable:
+
+```
+OPERATING SYSTEM (the full stack):
+  ┌──────────────────────────────────────────────┐
+  │  User-facing software                        │
+  │  Desktop environment, GUI, apps              │
+  │  (GNOME, KDE, Windows Explorer, Finder)      │
+  ├──────────────────────────────────────────────┤
+  │  System utilities and tools                  │
+  │  Shell (bash, zsh), coreutils (ls, cp, mv)  │
+  │  Package manager, init system (systemd)      │
+  │  Network manager, display manager            │
+  ├──────────────────────────────────────────────┤
+  │  System libraries                            │
+  │  glibc (C standard library)                  │
+  │  libpthread, libssl, libz, etc.              │
+  ├──────────────────────────────────────────────┤
+  │  KERNEL ← this is the privileged core only  │
+  │  Runs in ring 0                              │
+  │  Everything above runs in ring 3             │
+  └──────────────────────────────────────────────┘
+
+Linux = the kernel only (Linus Torvalds created this)
+GNU/Linux = kernel + GNU userspace tools
+Ubuntu/Pop!_OS/Debian = kernel + GNU tools + package manager + desktop
+Android = Linux kernel + Android middleware + ART + Google apps
+macOS = XNU kernel + BSD userland + Apple frameworks + GUI
+```
+
+### The Precise Answer — Kernel vs OS at Ring 0
+
+```
+RING 0 (kernel mode) contains ONLY:
+  The kernel itself
+  Kernel modules (device drivers)
+  Nothing else — no exceptions
+
+RING 3 (user mode) contains:
+  Everything else:
+    glibc (C standard library)
+    bash, zsh (shells)
+    systemd (init system)
+    GNOME, KDE (desktop environments)
+    Every application you run
+    Even "system" programs like ps, top, ifconfig
+    Even privileged tools like sudo (which uses setuid to briefly escalate)
+
+The OS = kernel (ring 0) + everything above it (ring 3)
+The kernel = only the ring 0 part
+```
+
+This answers your question directly: **No, the OS does not all live at ring 0. Only the kernel does. The rest of the OS — shells, daemons, system utilities — all run in ring 3 and use system calls to ask the kernel for privileged operations.**
+
+```bash
+# Prove this: check what runs in kernel vs user space
+ps aux | head -5
+# PID USER ... COMMAND
+# Everything shown by ps is a userspace process (ring 3)
+# The kernel itself does not appear as a process in ps
+# Kernel threads appear with brackets: [kworker/0:1]
+
+# See kernel threads (kernel code running in its own scheduling context)
+ps aux | grep -E "^\S+\s+[0-9]+.*\[.*\]"
+# [kthreadd], [migration/0], [kworker/...], [ksoftirqd/0]
+# These are kernel threads — ring 0 code, not user processes
+```
+
+---
+
+## The MMU — Where It Lives in Hardware
+
+The **MMU (Memory Management Unit)** is a hardware component. It is NOT software. It is silicon on the CPU die.
+
+### Physical Location
+
+```
+Inside the CPU die:
+
+┌─────────────────────────────────────────────────────┐
+│                     CPU DIE                         │
+│                                                     │
+│  ┌──────────┐  ┌──────────┐  ┌──────────────────┐  │
+│  │  Core 0  │  │  Core 1  │  │     Core 2       │  │
+│  │  ┌────┐  │  │  ┌────┐  │  │  ┌────┐          │  │
+│  │  │ALU │  │  │  │ALU │  │  │  │ALU │          │  │
+│  │  └────┘  │  │  └────┘  │  │  └────┘          │  │
+│  │  ┌────┐  │  │  ┌────┐  │  │  ┌────┐          │  │
+│  │  │ L1 │  │  │  │ L1 │  │  │  │ L1 │          │  │
+│  │  │cache│ │  │  │cache│ │  │  │cache│          │  │
+│  │  └────┘  │  │  └────┘  │  │  └────┘          │  │
+│  │  ┌────┐  │  │  ┌────┐  │  │  ┌────┐          │  │
+│  │  │MMU │◄─┼──┼──│MMU │  │  │  │MMU │          │  │
+│  │  │+TLB│  │  │  │+TLB│  │  │  │+TLB│          │  │
+│  │  └────┘  │  │  └────┘  │  │  └────┘          │  │
+│  └──────────┘  └──────────┘  └──────────────────┘  │
+│                                                     │
+│  ┌─────────────────────────────────────────────┐    │
+│  │           Shared L3 Cache                   │    │
+│  └─────────────────────────────────────────────┘    │
+│                                                     │
+│  ┌─────────────────────────────────────────────┐    │
+│  │        Memory Controller                    │    │
+│  │  (connects CPU die to RAM chips)            │    │
+│  └─────────────────────────────────────────────┘    │
+└─────────────────────────────────────────────────────┘
+         │
+         │ memory bus
+         ▼
+   RAM chips (separate from CPU)
+```
+
+Each CPU core has its own MMU and TLB. The MMU sits between the core's cache and the memory controller. Every memory access from any instruction goes through the MMU before it reaches the cache or RAM.
+
+### What the MMU Does in Hardware
+
+The MMU is a combinational and sequential logic circuit (from Chapter 01) that:
+
+1. Receives a virtual address from the CPU core
+2. Checks the TLB (a small associative cache built from SRAM) for a cached translation
+3. If TLB hit: outputs physical address immediately (1-2 cycles)
+4. If TLB miss: performs a page table walk (reading from RAM, 100s of cycles)
+5. Checks permission flags in the page table entry
+6. If access is forbidden: raises a page fault exception
+7. If access is allowed: passes physical address to the cache/memory controller
+
+The kernel configures the MMU by writing the page table's physical address into the CR3 register (x86-64) or TTBR0/TTBR1 (ARM64). After that, the MMU operates completely autonomously in hardware — no kernel code runs during normal address translation.
+
+```bash
+# Kernel sets CR3 on every context switch (process switch)
+# You can see context switches happening:
+vmstat 1 5
+# cs column = context switches per second
+# Each context switch involves writing a new value to CR3
+```
+
+---
+
+## System Calls vs Function Calls — The Precise Difference
+
+These look similar in source code but are completely different mechanisms at the hardware level.
+
+### Function Calls — Staying in the Same Ring
+
+A function call stays entirely within the same privilege level. It uses the stack and the call instruction.
+
+```c
+// Function call — everything in ring 3
+int result = add(5, 3);
+
+// What the CPU does:
+// 1. Evaluate arguments (5 and 3)
+// 2. Push return address onto the stack
+// 3. Jump to add() function's code
+// 4. add() executes (still in ring 3)
+// 5. add() executes RET instruction
+// 6. CPU pops return address from stack
+// 7. CPU jumps back to the instruction after the call
+// 8. result = return value from RAX register
+
+// All of this happens in ring 3
+// No privilege change
+// No kernel involvement
+// No CPU mode switch
+// Just a jump with a saved return address
+```
+
+In assembly:
+```asm
+; Calling add(5, 3) — pure ring 3 operation
+mov edi, 5          ; first argument
+mov esi, 3          ; second argument
+call add            ; push RIP+1 to stack, jump to add
+; ... add executes and returns ...
+; result now in EAX
+```
+
+### System Calls — Crossing the Ring Boundary
+
+A system call crosses from ring 3 to ring 0. It uses the `SYSCALL` instruction (x86-64) or `SVC` (ARM64).
+
+```c
+// System call — crosses ring boundary
+ssize_t bytes = write(1, "hello", 5);
+
+// What glibc does:
+// 1. Places syscall number (1 = write) in RAX
+// 2. Places arguments in RDI, RSI, RDX
+// 3. Executes SYSCALL instruction
+
+// What SYSCALL instruction does in hardware:
+// 1. CPU saves current RIP and RFLAGS
+// 2. CPU reads LSTAR register (kernel set this at boot)
+// 3. CPU atomically changes CPL from 3 to 0
+// 4. CPU jumps to LSTAR address (kernel's syscall entry)
+
+// Kernel executes (in ring 0):
+// 1. Saves all user registers
+// 2. Reads syscall number from RAX (= 1 = write)
+// 3. Validates arguments (is fd 1 valid? is buffer accessible?)
+// 4. Performs write (calls kernel's write implementation)
+// 5. Places return value in RAX
+// 6. Executes SYSRET instruction
+
+// SYSRET instruction does in hardware:
+// 1. CPU atomically changes CPL from 0 to 3
+// 2. CPU restores RIP and RFLAGS
+// 3. User program resumes
+```
+
+### Side by Side Comparison
+
+```
+                    Function Call              System Call
+                    ─────────────────          ───────────────────────
+Instruction:        CALL (x86) / BL (ARM)      SYSCALL (x86) / SVC (ARM)
+Ring change:        none (stays ring 3)        ring 3 -> ring 0 -> ring 3
+Stack used:         user stack                 switches to kernel stack
+Destination:        any address in text        fixed LSTAR/VBAR address
+                    segment                    (kernel controls this)
+Entry point:        wherever you call to       only one entry point
+                    (can be any function)      (kernel's syscall handler)
+Time cost:          ~1 nanosecond              ~100-300 nanoseconds
+What executes:      your code or library code  kernel code
+Can access:         your process's memory      all memory (ring 0)
+Example:            printf(), malloc(), add()  write(), open(), fork()
+Interceptable:      only with debugging tools  glibc wraps them
+```
+
+```bash
+# Count function calls: cannot easily count (too many, too fast)
+
+# Count system calls: strace does this
+strace -c ls
+# Shows every system call with count, time, errors
+# openat, read, write, close, mmap, etc.
+
+# See that function calls are NOT system calls
+strace -c bash -c 'x=$((5+3)); echo $x'
+# The arithmetic $((5+3)) makes ZERO system calls
+# It is all done by the CPU executing instructions in ring 3
+# Only the echo causes system calls (write())
+```
+
+---
+
+## BRE, ERE and PCRE — The Three Regex Flavours
+
+These are three different standards for regular expression syntax. They differ in which metacharacters are special and which require escaping.
+
+### BRE — Basic Regular Expressions (POSIX 1986)
+
+The original POSIX standard. Deliberately conservative — most metacharacters must be **escaped to be special**.
+
+```
+BRE metacharacters (special WITHOUT escaping):
+  .     any character
+  *     zero or more of previous
+  ^     start of line
+  $     end of line
+  []    character class
+
+BRE metacharacters (special ONLY WITH backslash):
+  \+    one or more (NOT just + alone)
+  \?    zero or one
+  \|    alternation
+  \(\)  grouping
+  \{n\} repetition count
+
+Examples in BRE:
+  grep 'a*b' file        <- zero or more a followed by b
+  grep 'a\+b' file       <- one or more a followed by b (needs \+)
+  grep 'cat\|dog' file   <- cat or dog (needs \|)
+
+Tools that use BRE by default:
+  grep (without -E)
+  sed (without -E or -r)
+  ed
+```
+
+### ERE — Extended Regular Expressions (POSIX 1986)
+
+More intuitive — metacharacters are special WITHOUT backslash. Backslash REMOVES their special meaning.
+
+```
+ERE metacharacters (special WITHOUT escaping):
+  .     any character
+  *     zero or more
+  +     one or more
+  ?     zero or one
+  |     alternation
+  ()    grouping
+  {}    repetition count
+  ^     start of line
+  $     end of line
+  []    character class
+
+Examples in ERE:
+  grep -E 'a+b' file        <- one or more a followed by b
+  grep -E 'cat|dog' file    <- cat or dog
+  grep -E '(ab)+' file      <- one or more "ab"
+  grep -E '[0-9]{3}' file   <- exactly 3 digits
+
+Tools that use ERE:
+  grep -E (or egrep)
+  sed -E (or sed -r)
+  awk (uses ERE natively)
+```
+
+### PCRE — Perl-Compatible Regular Expressions (1994)
+
+Created by Philip Hazel implementing Perl's regex engine as a library. Goes beyond both BRE and ERE with features that technically exceed regular language power.
+
+```
+PCRE adds beyond ERE:
+  (?:...)    non-capturing group (ERE () always captures)
+  (?=...)    positive lookahead
+  (?!...)    negative lookahead
+  (?<=...)   positive lookbehind
+  (?<!...)   negative lookbehind
+  \d         digit (same as [0-9])
+  \D         non-digit
+  \w         word char [a-zA-Z0-9_]
+  \W         non-word char
+  \s         whitespace
+  \S         non-whitespace
+  \b         word boundary
+  \1, \2     backreferences (capture group references)
+  (?P<name>) named capture groups
+  (?i)       inline flags (case insensitive)
+
+Examples:
+  grep -P '\d{3}-\d{4}' file    <- phone number pattern
+  grep -P '(?i)error' file      <- case-insensitive
+  grep -P '(?<=GET )\S+' file   <- lookbehind: URL after GET
+  grep -P '\b\w+\b' file        <- word boundaries
+
+Tools using PCRE:
+  grep -P
+  Python re module
+  JavaScript RegExp
+  PHP preg_* functions
+  .NET Regex class
+  Java java.util.regex
+  Most modern languages
+```
+
+### Quick Reference — Which to Use When
+
+```
+Use BRE (default grep, sed):
+  Simple patterns, maximum compatibility
+  grep 'pattern' file
+  sed 's/old/new/g' file
+
+Use ERE (-E flag):
+  More complex patterns without backslash clutter
+  grep -E 'pat1|pat2' file
+  sed -E 's/(group1)(group2)/\2\1/' file
+
+Use PCRE (-P flag):
+  Lookahead/lookbehind, named groups, \d \w \s shortcuts
+  Security work: credential scanning, log parsing
+  grep -P '(?i)password\s*[:=]\s*\S+' file
+
+Cannot use regex at all:
+  Nested/balanced structures (HTML, JSON, XML)
+  Use a proper parser instead
+```
+
+---
+
+## The Complete Hardware vs Software Map
+
+Every concept in this document lives at exactly one layer. This section places everything precisely.
+
+### Layer 0 — Physics
+
+```
+What:     Electrons flowing through semiconductor material
+Where:    Inside the silicon wafer of the CPU and RAM chips
+Examples: Voltage high (1), voltage low (0)
+Is it:    Hardware — pure physics, no design choices beyond material science
+```
+
+### Layer 1 — Transistors
+
+```
+What:     Silicon switches controlled by voltage (MOSFET transistors)
+Where:    Etched into the silicon die at nanometre scale (3nm, 5nm, 7nm)
+Examples: NMOS transistor, PMOS transistor, FinFET
+Is it:    Hardware — physical devices
+Count:    Billions per chip (Apple M2: 20 billion, AMD EPYC: 100 billion)
+```
+
+### Layer 2 — Logic Gates
+
+```
+What:     Transistors wired together to implement boolean logic
+Where:    Inside the CPU die — groups of 2-6 transistors per gate
+Examples: AND, OR, NOT, NAND, NOR, XOR gates
+Is it:    Hardware — circuits, not software
+Function: Take binary inputs, produce binary output by a fixed rule
+```
+
+### Layer 3 — Functional Units
+
+```
+What:     Gates combined into components with specific functions
+Where:    Inside the CPU die
+Examples:
+  ALU (Arithmetic Logic Unit):
+    Built from adder circuits (XOR+AND for sum+carry)
+    Multiplexer selects which operation to perform
+    Produces result + flags (Zero, Carry, Overflow, Sign)
+
+  Registers:
+    Built from D flip-flops (arrays of 64 flip-flops for 64-bit)
+    Located directly adjacent to ALU (wired connection, 0 cycles)
+    x86-64: RAX,RBX,RCX,RDX,RSI,RDI,RSP,RBP,R8-R15 + RIP,RFLAGS
+
+  Control Unit + Decoder:
+    Pattern detector AND gates (one per opcode)
+    Translates opcode bits -> control signals -> activates right circuit
+    The ISA in silicon form
+
+  MMU (Memory Management Unit):
+    Address translation hardware (virtual->physical)
+    Contains TLB (Translation Lookaside Buffer — SRAM cache)
+    Checks page permission flags on every access
+    Raises page fault exception when access is forbidden
+    Located: inside each CPU core, between cache and memory controller
+
+  Cache (L1, L2, L3):
+    SRAM cells (faster than DRAM, more expensive)
+    L1: inside each core (32-64KB, split I-cache and D-cache)
+    L2: per-core or shared (256KB-1MB)
+    L3: shared across all cores (8-64MB)
+    Managed by hardware cache controller automatically
+    Software cannot directly control what is cached
+
+  Clock:
+    Crystal oscillator circuit
+    Synchronises all circuits to a fixed frequency
+    3-5 GHz on modern desktop CPUs
+    0.1-2 GHz on efficiency cores (mobile)
+
+Is it: Hardware — all pure silicon circuits
+```
+
+### Layer 4 — RAM (Main Memory)
+
+```
+What:     DRAM cells — capacitors that hold charge representing bits
+Where:    Separate chips on the motherboard (desktop)
+          On-package next to SoC die (mobile — LPDDR)
+Access:   Via memory controller -> memory bus -> DRAM chips
+Speed:    100-300 CPU cycles per access
+Contents: Everything currently in use by all running programs:
+          Kernel code and data
+          All process code, stack, heap, globals
+          Page tables (in kernel-controlled region)
+          File system buffers (disk cache)
+          Network buffers
+
+Is it:    Hardware (DRAM chips) + organised by software (kernel)
+          The hardware is the chips
+          The organisation (which frames hold what) is managed by kernel
+```
+
+### Layer 5 — Firmware
+
+```
+What:     Machine code stored in ROM/flash chips, not in RAM
+Where:    ROM chip on motherboard (BIOS/UEFI)
+          ROM in mobile chips (BootROM inside SoC)
+          Microcode storage inside CPU (Intel/AMD internal)
+Examples:
+  BIOS/UEFI: startup firmware, hardware initialisation, boot device search
+  Microcode:  x86-64 instruction-to-uop translation inside modern CPUs
+              Updates delivered via CPU firmware updates
+  BootROM:    immutable first-stage bootloader in mobile chips
+              Verifies next stage signature before executing
+
+Is it:    Firmware — between hardware and software
+          Code (software) but stored in read-only hardware
+          Cannot be changed without specialised tools (or at all for ROM)
+```
+
+### Layer 6 — Machine Code
+
+```
+What:     Raw binary bytes that the CPU decoder recognises as instructions
+Where:    Stored in ELF binary files on disk
+          Loaded into RAM when program executes
+          Fetched into instruction cache (L1 I-cache) by the CPU
+          Decoded by the control unit's decoder circuit
+Examples: 0x48 0x89 0xC3 (MOV RBX, RAX on x86-64)
+          0x8B 0x02 0x00 0x00 (ADD X0, X0, X1 on ARM64)
+
+Is it:    Software (bytes in files and memory)
+          BUT executed directly by hardware (no interpreter)
+          The ONLY format the CPU natively understands
+          Everything above must eventually become machine code
+```
+
+### Layer 7 — Assembly Language
+
+```
+What:     Human-readable text representation of machine code
+Where:    Text files on disk (.asm, .s source files)
+          In programmer's head and documentation
+          In disassembler output (objdump, gdb, ghidra)
+Examples: MOV RBX, RAX
+          ADD X0, X0, X1
+          SYSCALL
+          JZ label
+
+Is it:    Software (text) — NOT hardware
+          Requires an ASSEMBLER to convert to machine code
+
+ASSEMBLER (the tool):
+  What:   Software program that reads assembly text -> outputs machine code
+  Where:  Runs on the CPU like any other program (ring 3)
+  Examples: nasm, gas (GNU assembler), masm, yasm
+  Sits at: Layer 7 software tool
+  Input:  assembly text files
+  Output: object files (.o) containing machine code
+  Does NOT touch hardware directly
+  Does NOT need a terminal (can take file input)
+```
+
+### Layer 8 — C and Compiled Languages
+
+```
+What:     High-level language with types, functions, control flow
+Where:    Text files on disk (.c, .cpp, .rs, .go source files)
+Examples: int x = 5 + 3;
+          printf("hello\n");
+
+Is it:    Software (text) — NOT hardware
+
+COMPILER (the tool):
+  What:   Software program that reads C -> outputs machine code
+  Where:  Runs on the CPU like any other program (ring 3)
+  Examples: GCC (GNU Compiler Collection), Clang, rustc
+  Sits at: Layer 8 software tool
+  Input:  C source files
+  Output: Object files (.o), then linked into ELF binaries
+  Internal steps: C -> AST -> IR -> assembly -> machine code
+  Does NOT touch hardware directly
+
+LINKER (the tool):
+  What:   Combines multiple .o files into one executable
+  Examples: ld (GNU linker)
+  Produces: ELF binary (executable file)
+```
+
+### Layer 9 — The Operating System Kernel
+
+```
+What:     Compiled C program that manages hardware for all user processes
+Where:    Loaded into RAM at boot, stays there permanently
+          Runs in ring 0 (CPU privilege level 0)
+          Has its own virtual address space region (upper half on x86-64)
+Examples: Linux kernel, XNU (macOS/iOS), NT kernel (Windows)
+          OP-TEE (Secure World TEE OS)
+          sepOS (Apple Secure Enclave OS)
+
+Is it:    Software running in ring 0
+          Can directly access all hardware (no MMU restriction)
+          Can execute all CPU instructions including privileged ones
+
+Kernel subsystems (all software, all ring 0):
+  Process scheduler
+  Memory manager (manages page tables, frames, swap)
+  Virtual filesystem (VFS)
+  Network stack (TCP/IP, socket layer)
+  Device drivers (talk to hardware via I/O ports and memory-mapped I/O)
+  System call handler (the SYSCALL entry point)
+  Interrupt handler
+  Security subsystem (SELinux, AppArmor, namespaces)
+```
+
+### Layer 10 — System Libraries and Userspace OS Components
+
+```
+What:     Programs and libraries that run in ring 3 but provide
+          OS-like services to applications
+Where:    ELF shared libraries (.so files) loaded into process memory
+          Daemon processes running as root or system users
+
+Examples:
+  glibc (libc.so):
+    C standard library — wraps system calls in C functions
+    printf() -> write() system call
+    malloc() -> brk()/mmap() system calls
+    pthread_create() -> clone() system call
+    Sits at: ring 3, loaded into every C program
+    Is NOT part of the kernel
+
+  libpthread: POSIX threads implementation
+  libssl/libcrypto (OpenSSL): cryptography library
+  libcurl: HTTP client library
+
+  systemd (PID 1):
+    First userspace process (init system)
+    Manages other services
+    Runs in ring 3 with elevated privileges via capabilities
+    Is NOT the kernel — it is a ring 3 program
+
+  udev: device event manager (ring 3)
+  NetworkManager: network configuration (ring 3)
+  dbus: inter-process communication bus (ring 3)
+
+Is it:    Software in ring 3
+          Uses system calls to request kernel services
+          NOT privileged hardware access
+```
+
+### Layer 11 — Applications
+
+```
+What:     User programs that accomplish specific tasks
+Where:    ELF binaries on disk, loaded into RAM to execute
+Examples: bash, vim, nginx, postgres, python3, your programs
+Ring:     Ring 3 — cannot directly access hardware
+Access:   Via system calls -> kernel -> hardware
+
+Shells specifically:
+  bash, zsh, fish — ring 3 programs
+  Read commands from stdin (terminal, file, pipe, socket)
+  Fork and exec child processes
+  Never touch hardware directly
+  Use write() system call to print to terminal
+  Use read() system call to receive input
+
+Is it:    Software in ring 3
+```
+
+### Layer 12 — Interpreted Languages and Runtimes
+
+```
+What:     Programs that read other programs and execute them
+Where:    Compiled executables running in ring 3
+
+Examples:
+  CPython (python3):
+    C program compiled to machine code
+    Reads .py files as text
+    Interprets them (executes Python bytecode)
+    Is itself a ring 3 application
+
+  JVM (java):
+    C/C++ program compiled to machine code
+    Reads .class files (Java bytecode)
+    JIT compiles hot bytecode to machine code at runtime
+    Is itself a ring 3 application
+
+  ART (Android Runtime):
+    Compiles DEX bytecode to ARM64 machine code at install time
+    The compiled ARM64 runs in ring 3 (EL0 on Android)
+
+Is it:    Software in ring 3
+```
+
+### Layer 13 — Formal Language Theory
+
+```
+What:     Mathematical framework describing computation and pattern matching
+Where:    In mathematics (not in hardware or software directly)
+          Manifests in: compiler design, regex engines, protocol verification
+
+Components:
+  Finite Automata (DFA, NFA):
+    Mathematical models — not hardware or software by themselves
+    Implemented as software: regex engines, compiler lexers
+    
+  Context-Free Grammars:
+    Mathematical notation for language structure
+    Implemented as software: parser generators (yacc, bison, ANTLG)
+    
+  Regular Expressions:
+    Human notation for patterns recognized by finite automata
+    Implemented as: regex engine libraries (PCRE, RE2, Rust regex)
+    These libraries run in ring 3
+
+  Turing Machines:
+    Mathematical model of universal computation
+    Implemented by: all computers (a Von Neumann computer simulates a TM)
+    Not a piece of software or hardware — a theoretical model
+
+Is it:    Mathematics — a framework for thinking about computation
+          Implemented as: software libraries and tools in ring 3
+          Does NOT run directly in hardware
+          Does NOT have a privilege level
+          Does NOT have a memory address
+
+Where formal languages appear in practice:
+  Compiler lexer: implements a DFA to tokenise source code (software, ring 3)
+  Compiler parser: implements a PDA to parse grammar (software, ring 3)
+  grep/sed: implements a regex engine (software, ring 3)
+  TCP state machine: implements a DFA for connection state (kernel, ring 0)
+  Hardware packet inspection: DFA implemented in FPGA/ASIC silicon (hardware)
+```
+
+---
+
+## The Complete Taxonomy — Hardware, Firmware, Software
+
+```
+HARDWARE (silicon, electricity, physics):
+  Electrons and voltage levels
+  Transistors (MOSFET — billions per chip)
+  Logic gates (AND, OR, NOT, NAND, NOR, XOR)
+  Adders, multiplexers, decoders (combinational logic)
+  Flip-flops (sequential logic, memory cells)
+  Registers (flip-flop arrays, inside CPU die)
+  ALU (arithmetic/logic unit)
+  Control unit + decoder (pattern detector circuits)
+  MMU + TLB (address translation, inside each CPU core)
+  L1/L2/L3 cache (SRAM, inside CPU die)
+  Clock circuit (crystal oscillator)
+  RAM chips (DRAM cells, separate from CPU)
+  ROM chips (BIOS/UEFI stored here)
+  Storage chips (NAND flash cells)
+  Network cards, USB controllers, GPU (dedicated silicon)
+
+FIRMWARE (code in ROM/flash — between hardware and software):
+  BIOS/UEFI (x86 motherboard startup code)
+  BootROM (mobile chip first-stage bootloader)
+  CPU microcode (x86-64 uop translation layer)
+  Storage controller firmware
+  Network card firmware (runs on card's own processor)
+
+SOFTWARE RING 0 (kernel mode — privileged):
+  Linux kernel (monolithic + modules)
+  Windows NT kernel
+  XNU kernel (macOS/iOS)
+  OP-TEE OS (ARM TrustZone Secure World)
+  Apple sepOS (Secure Enclave Processor)
+  Hypervisors: KVM, VMware, Hyper-V (ring -1 / VMX root actually)
+
+SOFTWARE RING 3 (user mode — unprivileged):
+  System libraries: glibc, libpthread, libssl
+  Init system: systemd, launchd, Android init
+  Shells: bash, zsh, fish, sh
+  System utilities: ls, ps, top, grep, sed, awk, ssh, nc
+  Compilers: GCC, Clang, rustc (ring 3 programs that produce machine code)
+  Assemblers: nasm, gas (ring 3 programs that produce machine code)
+  Runtimes: CPython, JVM, ART, Node.js
+  Applications: your programs, web browsers, databases
+
+MATHEMATICS (not hardware, not software — theoretical framework):
+  Formal language theory
+  Automata theory (DFA, NFA, PDA, TM)
+  Regular expressions (notation)
+  Context-free grammars (notation)
+  Lambda calculus
+  Computability theory
+  These are IDEAS implemented by software tools
+```
+
+---
+
+## The Full Flow — From Human Writing Code to CPU Executing It
+
+```
+STEP 1 — HUMAN WRITES SOURCE CODE
+  Tool:    Text editor (vim, VSCode)
+  Input:   Human intent
+  Output:  Text file (.c, .py, .asm) on disk
+  Ring:    N/A (disk file, not executing yet)
+  Level:   Layer 8 (C) or Layer 7 (assembly)
+
+STEP 2 — ASSEMBLY: ASSEMBLER READS TEXT, OUTPUTS MACHINE CODE
+  Tool:    nasm, gas (assembler program)
+  Input:   .asm text file
+  Output:  .o object file (machine code in ELF container)
+  Ring:    Ring 3 (assembler is a user program)
+  Layer:   Software tool — Layer 7
+  Does:    Lexical analysis (tokenise mnemonics)
+           Opcode table lookup (MOV -> 0x89, ADD -> 0x03, etc.)
+           Outputs raw bytes matching ISA specification
+  Formal language used: Regular expressions (lexer tokenises input)
+                        Simple grammar (parser recognises instruction format)
+
+STEP 3 — C: COMPILER READS C TEXT, OUTPUTS MACHINE CODE
+  Tool:    GCC, Clang
+  Input:   .c source file
+  Output:  .o object file (machine code in ELF container)
+  Ring:    Ring 3
+  Layer:   Software tool — Layer 8
+  Internal stages:
+    Lexer:    tokenises C source using DFA (regex for each token type)
+              Formal language: regular expressions / finite automata
+    Parser:   recognises C grammar using PDG (context-free grammar)
+              Formal language: context-free grammar / pushdown automaton
+    Semantic: type checking, scope resolution
+    IR gen:   produces intermediate representation (LLVM IR, GCC GIMPLE)
+    Optimiser: transforms IR for performance
+    Code gen: translates IR to target machine code (x86-64, ARM64, etc.)
+    Internal assembler: produces ELF object file
+
+STEP 4 — LINKER COMBINES OBJECTS INTO EXECUTABLE
+  Tool:    ld (GNU linker)
+  Input:   Multiple .o files + library archives (.a, .so)
+  Output:  ELF executable binary file
+  Ring:    Ring 3
+  Does:    Resolves cross-file references (symbol resolution)
+           Sets final virtual addresses for each section
+           Produces the final ELF with .text, .data, .bss, etc.
+
+STEP 5 — USER RUNS THE PROGRAM
+  Action:  ./myprogram (or kernel exec on behalf of shell)
+  Kernel:  Reads ELF header (magic number, architecture, entry point)
+           Allocates virtual address space for new process
+           Creates page table for the new process
+           Maps ELF sections to virtual pages (Present=0, lazy loading)
+           Sets up initial stack (argc, argv, environment)
+           Sets RIP/PC to ELF entry point
+  Ring:    Kernel does this in ring 0, then switches to ring 3 for user code
+
+STEP 6 — CPU EXECUTES THE PROGRAM (Ring 3)
+  Hardware: Fetch-decode-execute cycle begins at entry point
+  Fetch:    MMU translates virtual address -> physical
+            Page fault if not in RAM -> kernel loads from ELF on disk
+            CPU reads instruction bytes from L1 I-cache
+  Decode:   Control unit decoder recognises opcode pattern
+            Pattern detector AND gates fire the right control wire
+  Execute:  ALU performs the operation
+            Registers updated
+            Memory read/written (through MMU for every access)
+  Increment: RIP/PC moves to next instruction
+  Repeat:   Billions of times per second
+
+STEP 7 — PROGRAM CALLS A FUNCTION
+  What:     CPU executes CALL instruction (x86) or BL instruction (ARM)
+  Hardware: CALL pushes return address to stack, jumps to function
+            No ring change, no kernel involvement
+            Entire operation: push + jump = 1-3 cycles
+  Ring:     Stays in ring 3 throughout
+
+STEP 8 — PROGRAM MAKES A SYSTEM CALL
+  What:     Program needs kernel service (read file, write to terminal, fork)
+  How:      glibc wrapper calls SYSCALL instruction (x86) or SVC (ARM)
+  Hardware:
+    CPU saves current RIP/RFLAGS
+    CPU reads LSTAR/VBAR (kernel set this at boot)
+    CPU atomically changes CPL: 3 -> 0
+    CPU jumps to kernel syscall entry point
+    Kernel validates arguments (are pointers in user space? valid fd?)
+    Kernel performs the operation (in ring 0, can access all memory/hardware)
+    Kernel places result in RAX/X0
+    CPU executes SYSRET/ERET
+    CPU atomically changes CPL: 0 -> 3
+    User program continues
+  Cost:     100-300 nanoseconds (1000x slower than function call)
+
+STEP 9 — PROGRAM ACCESSES MEMORY
+  Every single memory access goes through:
+    CPU generates virtual address
+    MMU checks TLB (cache of recent translations)
+      TLB hit (99%+ of the time): get physical address in 1-2 cycles
+      TLB miss: page table walk (4 RAM reads = 400+ cycles)
+        Check permission flags in PTE
+          Permission denied (U/S=0 from ring 3): page fault -> SIGSEGV
+          Page not present (Present=0): page fault -> kernel loads page
+          NX set (executing non-executable page): fault -> SIGSEGV
+          Otherwise: physical address obtained
+    Cache lookup: L1 (4 cycles), L2 (12 cycles), L3 (40 cycles), RAM (100+)
+    Data returned to register
+
+STEP 10 — PROGRAM TERMINATES
+  Program calls exit() or returns from main()
+  glibc calls _exit() system call
+  Kernel frees all page table entries
+  Kernel frees all physical frames (marks them available for other processes)
+  Kernel removes process from scheduler
+  Kernel sends SIGCHLD to parent process
+  Parent's wait() returns with exit code
+```
+
+---
+
+## The Single Mental Model — Everything in One View
+
+```
+TRANSISTORS (hardware, physics)
+    |
+    | wired into
+    v
+LOGIC GATES (hardware, circuits)
+    |
+    | combined into
+    v
+FUNCTIONAL UNITS (hardware: ALU, registers, decoder, MMU, cache, RAM)
+    |
+    | decoder implements
+    v
+INSTRUCTION SET ARCHITECTURE (the interface between hardware and software)
+    |
+    | lowest software layer
+    v
+MACHINE CODE (software — bytes in memory, executed by hardware)
+    |
+    | human-readable form
+    v
+ASSEMBLY LANGUAGE (text) ──► ASSEMBLER (ring 3 tool) ──► machine code
+    |
+    | higher abstraction
+    v
+C / RUST / GO (text) ──► COMPILER (ring 3 tool) ──► machine code
+    |
+    | managed by
+    v
+OPERATING SYSTEM
+  KERNEL (ring 0):
+    - manages physical frames (page tables, page faults)
+    - schedules processes (who runs when)
+    - provides system calls (the gate between ring 3 and ring 0)
+    - runs device drivers (talks to hardware)
+  USERSPACE (ring 3):
+    - glibc, shells, utilities, applications
+    - all use system calls to reach the kernel
+    |
+    | enforced by
+    v
+PROTECTION RINGS (hardware mechanism in CPU)
+  Ring 0: kernel only
+  Ring 3: everything else
+    |
+    | address translation by
+    v
+MMU (hardware inside CPU core)
+  Virtual addresses ──► page table walk ──► physical addresses
+  Page faults ──► kernel page fault handler ──► load from swap or kill
+    |
+    | pages live in
+    v
+PHYSICAL RAM FRAMES (hardware — DRAM chips)
+  4KB blocks of physical memory
+  Organised by the kernel's memory manager
+  Mapped to virtual pages via page tables
+    |
+    | described by
+    v
+FORMAL LANGUAGE THEORY (mathematics — not hardware or software)
+  Regular expressions ──► regex engines (ring 3 software)
+  Context-free grammars ──► parsers (ring 3 software)
+  Finite automata ──► compiler lexers (ring 3 software)
+  Pushdown automata ──► compiler parsers (ring 3 software)
+  Turing machines ──► the theoretical model all computers instantiate
+```
+
+
+---
+
+-e 
+---
+
+-e 
+---
+
+## Part II — The Instruction Bridge
+
+*Chapters 4-5 are where hardware and software meet. The instruction set is the contract between silicon and code. Virtual memory is the hardware mechanism that makes multitasking and protection possible.*
+
+# Chapter 4: The Instruction Set — Opcodes, Decoders, x86-64, ARM64 and RISC-V
 
 Chapter 01 established that logic gates respond to bit patterns. This chapter answers what those bit patterns are, how the control unit recognises them, what an opcode is and where the word came from, what the difference is between a CPU's bit width and its opcode width, how the very first programs were written before any tools existed, and how programmers knew what streams of 0s and 1s meant when there was no screen, no ASCII, and no encoding standard.
 
@@ -3191,7 +4445,10 @@ The instruction set is the hardware contract that defines every trust boundary a
 -e 
 ---
 
-# Chapter 04: Protection Rings — Hardware-Enforced Privilege
+-e 
+---
+
+# Chapter 5: Protection Rings — Hardware-Enforced Privilege
 
 Chapters 01 and 02 explained the hardware and instruction set. Every program runs on the same CPU, using the same instructions. But not every program should be allowed to do everything. A user's web browser should not be able to read another user's files, disable interrupts, or modify the CPU's page tables. This chapter explains the hardware mechanism that enforces these boundaries — protection rings.
 
@@ -3662,7 +4919,1331 @@ sudo grep -c "stac\|clac" /proc/kallsyms 2>/dev/null || echo "check objdump"
 -e 
 ---
 
-# Chapter 05: History and Philosophy — The ASR-33, Unix, C, BSD and Linux
+-e 
+---
+
+-e 
+---
+
+## Part III — The Software Foundation
+
+*Chapters 6-7 explain how human-readable source code becomes machine code the CPU executes. The assembler, the compiler, the ELF format, and the complete flow from writing code to running it.*
+
+# Chapter 6: How Code Becomes Machine Code — Assembly, C and Compilers
+
+The CPU executes machine code. Everything else — assembly, C, Python — is a layer of abstraction on top of that reality. Understanding how code gets from human-readable source to bytes the CPU executes is essential before we can understand how the kernel itself is built, and later how memory vulnerabilities work.
+
+---
+
+## Machine Code — What the Central Processing Unit Actually Reads
+
+Machine code is a sequence of bytes where each byte or group of bytes encodes a specific action the central processing unit should take. These actions are things like: move a value into a register, add two registers together, jump to a different address, compare two values, call the operating system.
+
+Every central processing unit architecture has its own instruction set — its own dictionary of what each byte pattern means. An x86-64 byte pattern means something completely different to an ARM processor. This is why a program built for x86 will not run on an ARM processor without rebuilding or emulation.
+
+---
+
+## Assembly Language — Assembled, Not Compiled
+
+Assembly language is a thin human-readable layer that maps almost directly to machine code instructions. Each assembly instruction corresponds to one machine code instruction. The program that converts assembly to machine code is called an **assembler**, and the process is called **assembling** — not compiling.
+
+This distinction matters because an assembler and a compiler do fundamentally different things:
+
+| | Assembler | Compiler |
+|---|---|---|
+| Tool examples | `nasm`, `gas`, `as` | `gcc`, `clang`, `rustc` |
+| Process name | Assembling | Compiling |
+| Translation ratio | Nearly 1 to 1 — one instruction in, one instruction out | Many to many — one line in, many instructions out |
+| Intelligence | Almost none — a lookup table | Heavy — parsing, type checking, optimisation, code generation |
+| Decisions made | None — outputs exactly what you wrote | Many — chooses registers, reorders instructions, eliminates dead code |
+| Output | Machine code | Machine code |
+
+An assembler sees `mov eax, 5` and looks up that this maps to bytes `B8 05 00 00 00`. That is the entirety of its job — mechanical substitution of names for bytes. No understanding of what the code does, no optimisation, no decisions.
+
+A compiler sees `int x = a + b;` and must decide: which registers to use, whether to keep the variable in a register or write it to memory, whether to inline the operation, whether this expression is even needed at all. It makes hundreds of decisions per line of source code.
+
+```asm
+; Assembly: add 5 + 3 and exit with result
+; Written by a human, assembled by nasm or gas
+
+section .text
+global _start
+
+_start:
+    mov eax, 5          ; put the value 5 into register eax
+    mov ebx, 3          ; put the value 3 into register ebx
+    add eax, ebx        ; add ebx to eax, result stays in eax
+
+    mov edi, eax        ; move result to edi (exit code argument)
+    mov eax, 60         ; 60 is the syscall number for exit
+    syscall             ; ask the kernel to exit
+```
+
+The assembler converts this with a one-to-one substitution:
+
+```
+B8 05 00 00 00    ← mov eax, 5
+BB 03 00 00 00    ← mov ebx, 3
+01 D8             ← add eax, ebx
+89 C7             ← mov edi, eax
+B8 3C 00 00 00    ← mov eax, 60
+0F 05             ← syscall
+```
+
+Six instructions written, six instructions produced. The assembler is essentially a lookup table — it swaps names for bytes. No significant translation happens.
+
+---
+
+## C Language — Compiled to Machine Code via GCC
+
+C is a higher-level language. One line of C can expand into many machine code instructions. The GCC compiler reads your C source file, understands what you intend, applies optimisations, and produces machine code that achieves the same result — often more efficiently than hand-written assembly for complex programs.
+
+```c
+/* The same addition in C */
+#include <stdlib.h>
+
+int add(int a, int b) {
+    return a + b;
+}
+
+int main() {
+    int result = add(5, 3);
+    exit(result);
+}
+```
+
+GCC produces significantly more machine code than the assembly version because it must:
+
+- Set up and tear down a proper call stack frame for each function
+- Follow the C calling convention for passing arguments in the correct registers
+- Add a hidden startup routine (`_start`) that runs before your `main()` to initialise the C runtime environment
+- Link in the standard library functions like `exit()`
+- Handle the case where `main()` returns normally (not just via `exit()`)
+
+### What is Actually Different Between Assembled and Compiled Output
+
+Both assembling and compiling produce machine code in the ELF (Executable and Linkable Format) container on Linux. The ELF format is the same wrapper for both. The machine code inside is the same format. The central processing unit cannot tell which process produced a given instruction — a byte is a byte.
+
+The differences are in what surrounds and accompanies your code:
+
+| Aspect | Hand-written Assembly (assembled) | C (compiled by GCC) |
+|---|---|---|
+| Startup code | Only what you write | GCC adds hidden `_start`, C runtime initialisation, then calls `main()` |
+| Instruction count | Exactly what you wrote | Many more — stack frames, calling conventions, safety checks |
+| Standard library | None unless you write it | Linked in (libc, ld-linux.so) |
+| Binary size | Tiny — as small as tens of bytes | Larger — thousands of bytes minimum for a hello world |
+| Control | Total — every instruction is yours | Less — GCC makes register and optimisation decisions |
+| Safety | None — you manage everything manually | More — GCC can add stack canaries, bounds hints |
+| CPU execution | Identical — same fetch-decode-execute loop | Identical — same fetch-decode-execute loop |
+
+The central processing unit executes both identically. Once a byte is in the instruction pipeline, the origin — whether assembled or compiled — is completely irrelevant to the hardware.
+
+---
+
+## The ELF Binary Format — The Same Container for Both
+
+On Linux, all executables — whether assembled or compiled — are wrapped in the ELF (Executable and Linkable Format) container. ELF has a standard structure:
+
+```
+ELF Binary File
+├── ELF Header      (metadata: architecture, entry point address, section locations)
+├── .text section   (your actual machine code — what the CPU executes)
+├── .data section   (initialised global variables)
+├── .bss section    (uninitialised global variables)
+├── .rodata section (read-only data — string literals)
+└── .dynamic section (shared libraries this binary needs at runtime)
+```
+
+You can inspect any binary on your machine:
+
+```bash
+# See the machine code inside any binary
+objdump -d /bin/ls | head -50
+
+# See the ELF sections
+readelf -S /bin/ls
+
+# Compare binary sizes
+ls -lh /bin/ls
+```
+
+An assembled program with no standard library might have only a `.text` section with a few dozen bytes. A compiled C program links in libc and has many sections, with the binary size starting in the kilobytes even for trivial programs.
+
+---
+
+## The Bootstrap Problem — How Was GCC Itself Made?
+
+GCC is written in C. You need GCC to compile C. How was the first GCC ever produced?
+
+This is called the bootstrapping problem — one of the most philosophically interesting problems in computing.
+
+### The Historical Answer
+
+In the 1970s, the first C compiler was written in assembly language by hand. A human sat down and wrote assembly code — assembled it manually — to produce a program that could read C syntax and output machine code. Once that primitive C compiler existed, developers could use it to write a better C compiler in C. That new C compiler was then assembled/compiled using the old one. The new compiler could then compile itself. The assembly-written compiler was retired.
+
+```
+1970s: Human writes assembly C compiler by hand
+       Human assembles it manually into machine code
+         │
+         ↓
+First C compiler exists (written in assembly, assembled by hand)
+         │
+         ↓
+Developers write a better C compiler in C
+         │
+         ↓
+Use old assembly-based compiler to compile the new C compiler
+         │
+         ↓
+New C compiler can compile itself (self-hosting)
+         │
+         ↓
+Each new GCC version compiled by previous GCC version
+         │
+         ↓
+Modern GCC compiled by previous GCC
+         │
+         ↓
+GCC compiles Linux kernel → produces vmlinuz binary
+         │
+         ↓
+vmlinuz ships on your disk at installation time
+         │
+         ↓
+Your machine boots → GRUB loads vmlinuz directly
+         │
+GCC is never involved at runtime — it already did its job
+```
+
+GCC is like a printing press. The book (vmlinuz) was already printed and sitting on your shelf. When the central processing unit reads the book, the printing press is not involved. It did its job once during printing — years ago on a developer's machine.
+
+### Ken Thompson's Trusting Trust — The Security Implication
+
+In 1984, Ken Thompson, one of the creators of Unix, gave a famous lecture demonstrating a terrifying implication of the bootstrap chain. He showed it is possible to put a backdoor into a compiler that:
+
+- Injects malicious code into any program it compiles
+- Also injects itself into any new compiler it compiles
+- Leaves absolutely no trace in any source code anywhere
+- Persists even when you recompile from completely clean source code
+
+The backdoor lives in the compiler binary, not in any source file. Reading source code cannot detect it. Recompiling from clean source using the infected compiler simply produces another infected compiler binary — because the infection is in the tool doing the compiling, not the instructions being compiled.
+
+The only escape is to trace the entire compiler chain back to the original hand-written assembly and rebuild every step from scratch independently. This is why reproducible builds — the ability to independently verify that a published binary matches its claimed source code — matter enormously to security-conscious projects.
+
+---
+
+## How Different Languages Get to the Central Processing Unit
+
+Languages take fundamentally different paths to execution, and this affects their performance, portability and how they behave at runtime.
+
+### Assembled Languages — Direct 1:1 to Machine Code
+
+Assembly is processed by an assembler with a near 1:1 substitution. The output is machine code that the central processing unit executes directly. Every instruction the central processing unit runs is an instruction you wrote.
+
+```
+Assembly source → Assembler (1:1 substitution) → Machine code → CPU executes directly
+
+Tool: nasm, gas, as
+Characteristic: Maximum control, maximum responsibility, minimum abstraction
+```
+
+### Compiled Languages — Translated to Machine Code
+
+C, Rust, Go and C++ are compiled — the compiler does heavy translation work, expanding and transforming your source into optimised machine code. The output is machine code that the central processing unit executes directly.
+
+```
+Source code → Compiler (heavy translation) → Machine code → CPU executes directly
+
+Tools: gcc, clang, rustc, go build
+Characteristic: Fastest execution, compiler makes optimisation decisions
+```
+
+### Interpreted Languages — A Middleman Reads Your Code at Runtime
+
+Python, Ruby and classic shell scripts are never translated to machine code at all. Instead, a separate program called an interpreter reads your source code at runtime and carries out the instructions itself. The interpreter is a compiled machine code binary. Your script rides inside it.
+
+```
+Source code → Interpreter reads and executes line by line at runtime
+                │
+                └── interpreter itself is a compiled binary running on the CPU
+
+Tools: python3, ruby, bash
+Characteristic: Slower (interpreter overhead each line), portable, no build step
+
+When you run: python3 myscript.py
+What actually happens:
+  python3 binary (machine code) starts
+  python3 reads myscript.py line by line
+  python3 carries out each line itself
+  myscript.py never becomes machine code — ever
+```
+
+### Bytecode Languages — A Middle Ground
+
+Java, Kotlin and C# compile to an intermediate bytecode format. Bytecode is not machine code — it is a simpler, lower-level representation than source but still not executable by the central processing unit directly. A virtual machine runs the bytecode. The virtual machine can also use Just-In-Time compilation — converting frequently executed bytecode to actual machine code at runtime for speed.
+
+```
+Source → Compiler → Bytecode → Virtual machine executes bytecode
+                                │
+                                └── JIT: hot bytecode compiled to machine code at runtime
+
+Tools: javac → java, kotlinc → kotlin, csc → dotnet
+Characteristic: Portable (same bytecode runs anywhere the VM exists),
+                near-native speed with JIT compilation
+```
+
+| Language | Process | Output | Who executes it | Speed |
+|---|---|---|---|---|
+| Assembly | Assembling | Machine code | CPU directly | Maximum |
+| C, Rust, Go | Compiling | Machine code | CPU directly | Maximum |
+| Java, Kotlin | Compiling | Bytecode | Java Virtual Machine (with JIT) | Near maximum |
+| Python, Ruby | None | Nothing | Interpreter binary (machine code) | Slower |
+| JavaScript | None at write time | Nothing | V8 / SpiderMonkey engine (JIT) | Fast with JIT |
+
+---
+
+
+---
+
+-e 
+---
+
+-e 
+---
+
+-e 
+---
+
+# Chapter 7: Automata Theory, Formal Languages and Regular Expressions
+
+Chapters 01-04 covered hardware and privilege. This chapter steps into the mathematical theory that underlies how computers recognise patterns, how compilers understand programming languages, how network protocols are verified, and how the text tools you use daily in cybersecurity actually work. The theory comes before the practice because understanding the mathematics makes the tools — and their limitations — completely clear.
+
+---
+
+## The Question That Started It All
+
+In the 1930s, mathematicians asked a fundamental question before electronic computers even existed:
+
+> **What does it mean to compute something? What problems can be solved mechanically by following rules — and what problems cannot be solved at all?**
+
+Three independent answers emerged simultaneously, all equivalent to each other:
+
+```
+1936 — Alan Turing:
+  Defined computation using the Turing Machine
+  A theoretical device: tape + read-write head + state table
+  "A problem is computable if a Turing Machine can solve it"
+  Defined the outer limit of what any computer can ever do
+
+1936 — Alonzo Church:
+  Defined computation using Lambda Calculus
+  Mathematical functions and substitution rules
+  Proved equivalent to Turing Machines — same power
+
+1943 — McCulloch and Pitts:
+  Modelled brain neurons as mathematical logic circuits
+  Networks of simple on/off elements could compute
+  Seeded both neural network theory AND finite automaton theory
+```
+
+These converged into **computability theory** and **formal language theory** — the mathematical study of what machines can recognise and compute.
+
+---
+
+## What Is a Formal Language
+
+In mathematics, a **language** is not English or French. It is simply a set of strings — a collection of sequences of symbols.
+
+```
+Alphabet: the set of allowed symbols
+  Binary alphabet: {0, 1}
+  ASCII alphabet: all printable characters
+  Programming language alphabet: {a-z, A-Z, 0-9, +, -, *, /, (, ), ...}
+
+String: a finite sequence of symbols from the alphabet
+  Over {a, b}: "", "a", "b", "ab", "aba", "bbb"
+
+Language: any set of strings over an alphabet
+  Language 1: all strings of only digits
+              {"0", "1", ..., "9", "00", "01", ..., "123", ...}
+
+  Language 2: all strings with equal numbers of 'a' and 'b'
+              {"", "ab", "ba", "aabb", "abba", "abab", ...}
+
+  Language 3: all valid Python programs
+              (a very large set, but still a set of strings)
+```
+
+The central question of formal language theory: **given a string and a language, can a machine decide whether the string belongs to the language?** And crucially — what kind of machine is required for each type of language?
+
+---
+
+## The Chomsky Hierarchy — Four Classes of Languages
+
+Noam Chomsky formalised a hierarchy of languages in 1956. Each class requires a more powerful machine to recognise it. This hierarchy is one of the most important results in computer science.
+
+```
+Type 3 — Regular Languages
+  Most restricted, simplest
+  Machine required: Finite Automaton (no memory beyond current state)
+  Notation: Regular Expressions
+  Examples: digit strings, email format, IP address patterns
+  Limitation: cannot count, cannot handle nested structures
+
+Type 2 — Context-Free Languages
+  More powerful
+  Machine required: Pushdown Automaton (finite automaton + a stack)
+  Notation: Context-Free Grammars
+  Examples: arithmetic expressions, programming language syntax,
+            balanced parentheses, HTML structure
+  The stack allows counting depth and matching nested structures
+
+Type 1 — Context-Sensitive Languages
+  Machine required: Linear Bounded Automaton
+  More powerful than pushdown but bounded memory
+  Rare in practice
+
+Type 0 — Recursively Enumerable Languages
+  Most general, most powerful
+  Machine required: Turing Machine (full computation)
+  Includes everything computable
+  Some problems in this class are undecidable (halting problem)
+```
+
+This hierarchy directly explains what each tool can and cannot do. Regular expressions sit at Type 3 — the simplest level. This is not a weakness of the notation — it is a precise mathematical statement about what finite automata can recognise.
+
+---
+
+## Finite Automata — The Machine Behind Regular Expressions
+
+A **finite automaton** is the most minimal conceivable computing machine. It has:
+
+- A finite set of **states** — like positions on a board game
+- A **current state** it occupies right now
+- **Transition rules** — "if in state X and you read symbol Y, move to state Z"
+- A designated **start state**
+- A set of **accept states** — states that mean "yes, this string is in the language"
+
+It reads input one character at a time, follows transitions, and accepts or rejects based on its final state.
+
+```
+Example: automaton that accepts strings containing "cat"
+
+States: S0 (start), S1 (saw c), S2 (saw ca), S3 (saw cat — ACCEPT)
+
+Transitions:
+  S0 --c--> S1       (saw 'c', might be start of "cat")
+  S0 --other--> S0   (anything else, stay waiting)
+  S1 --a--> S2       (saw 'ca')
+  S1 --c--> S1       (new 'c', restart c-tracking)
+  S1 --other--> S0
+  S2 --t--> S3       (saw "cat" — accept!)
+  S2 --other--> S0
+  S3 --anything--> S3 (once accepted, stay accepted)
+
+Running "concatenate":
+  c -> S1
+  o -> S0  (not 'a', back to start)
+  n -> S0
+  c -> S1
+  a -> S2
+  t -> S3  ACCEPT
+  e -> S3  (stay)
+  ...remaining characters...
+  End in S3 -> "concatenate" CONTAINS "cat" -> MATCH
+```
+
+The crucial limitation: **a finite automaton has no memory beyond its current state.** It cannot count. It cannot remember what it saw three characters ago. It can only follow rules based on current state and current character.
+
+### DFA vs NFA — Two Equivalent Flavours
+
+```
+DFA — Deterministic Finite Automaton:
+  From any state, each input symbol leads to exactly ONE next state
+  No ambiguity
+  Efficient to execute: one transition per character
+  Guaranteed O(n) matching time (n = input length)
+
+NFA — Nondeterministic Finite Automaton:
+  From a state, one input symbol may lead to MULTIPLE possible next states
+  The automaton is in ALL possible states simultaneously (superposition)
+  Easier to construct from a regex pattern
+  Converted to DFA for efficient execution
+
+Key theorem:
+  DFA and NFA recognise exactly the same set of languages
+  Every NFA can be converted to an equivalent DFA
+  (the DFA may have exponentially more states, but it exists)
+```
+
+---
+
+## Kleene's Insight — Regular Expressions and Finite Automata Are Equivalent
+
+Stephen Kleene proved in 1951 the fundamental theorem:
+
+> **A language can be recognised by a finite automaton if and only if it can be described by a regular expression. They are two notations for exactly the same mathematical concept.**
+
+```
+Regular expression          Equivalent finite automaton
+──────────────────          ──────────────────────────
+a                           automaton accepting only "a"
+ab                          automaton accepting only "ab"
+a|b                         automaton accepting "a" or "b"
+a*                          automaton accepting "", "a", "aa", "aaa"...
+[0-9]+                      automaton with digit-loop needing at least one digit
+(cat|dog)                   two paths merging at one accept state
+
+Conversion algorithms:
+  regex -> NFA:  Thompson's construction (Ken Thompson, 1968)
+  NFA -> DFA:    Subset construction algorithm
+  DFA -> regex:  Kleene's algorithm
+  DFA -> minimal DFA: Hopcroft's minimisation algorithm
+
+All four representations are interchangeable.
+```
+
+The **word "regular"** in regular expression comes from this: languages that are recognised by finite automata were defined by Kleene as "regular" — meaning they follow strict rules that a finite, memoryless machine can enforce. It has nothing to do with CPU registers. The coincidence of similar-sounding names in two different fields causes common confusion.
+
+---
+
+## Ken Thompson — Bringing Theory Into Practice (1968)
+
+Kleene's 1951 mathematical notation sat in theoretical computer science for 17 years. **Ken Thompson** — the same person who created Unix and the first Unix shell — brought regular expressions into practical computing in 1968.
+
+Thompson was building a text editor (QED, ancestor of Unix `ed`) and needed users to be able to specify text search patterns. He took Kleene's notation and implemented it efficiently by converting regex patterns to NFAs and simulating them.
+
+Thompson's 1968 implementation guaranteed **O(n) matching time** — matching took time proportional to the length of the input string, regardless of pattern complexity. This guarantee comes directly from the finite automaton theory: simulating all NFA states simultaneously means you never backtrack.
+
+```
+Thompson's NFA simulation (1968):
+
+Instead of: try one path, if it fails backtrack and try another
+            (exponential worst case)
+
+Do this:    maintain the SET of all states the NFA could be in
+            after reading each character
+            update the set on each character
+            if the set contains any accept state: match
+
+Example with pattern (a|b)*c and input "aabbc":
+
+After 'a': {S1, S2}        (both a-path and b-path states active)
+After 'a': {S1, S2}        (still in both a-path states)
+After 'b': {S1, S2}        (b transitions keep us in loop states)
+After 'b': {S1, S2}
+After 'c': {S3}            (c transition reaches accept state)
+Result: MATCH
+
+Only one pass through the input.
+Never more work than the number of states times input length.
+O(n * m) where n=input length, m=number of NFA states
+Guaranteed no exponential blowup.
+```
+
+---
+
+## The Regex Syntax — What Each Symbol Means
+
+```
+Literal characters:
+  a        matches exactly 'a'
+  abc      matches exactly "abc"
+
+Metacharacters (special meaning):
+  .        matches any single character except newline
+  ^        anchors match at start of string (or line with MULTILINE)
+  $        anchors match at end of string (or line)
+
+Quantifiers (how many times):
+  *        zero or more of the preceding element
+  +        one or more of the preceding element
+  ?        zero or one of the preceding element
+  {n}      exactly n times
+  {n,m}    between n and m times (inclusive)
+  {n,}     n or more times
+
+Character classes:
+  [abc]    matches 'a', 'b', or 'c'
+  [a-z]    matches any lowercase letter
+  [0-9]    matches any digit
+  [^abc]   matches anything EXCEPT 'a', 'b', 'c'
+
+Shorthand character classes:
+  \d       any digit [0-9]
+  \D       any non-digit
+  \w       any word character [a-zA-Z0-9_]
+  \W       any non-word character
+  \s       any whitespace (space, tab, newline)
+  \S       any non-whitespace
+
+Grouping and alternation:
+  (abc)    group — treats "abc" as a unit, also captures match
+  (?:abc)  non-capturing group — unit but no capture
+  a|b      alternation — matches 'a' or 'b'
+
+Anchors:
+  \b       word boundary (between \w and \W)
+  \B       non-word boundary
+
+PCRE extensions (beyond strict regular languages):
+  (?=...)  positive lookahead — match only if followed by ...
+  (?!...)  negative lookahead
+  (?<=...) positive lookbehind
+  \1       backreference to capture group 1 (technically non-regular)
+```
+
+---
+
+## What Regex Can and Cannot Do — The Boundary
+
+```
+CAN be matched with regex alone (Type 3 — regular):
+  Valid integer:          ^-?[0-9]+$
+  Valid hex colour:       ^#[0-9A-Fa-f]{6}$
+  Valid IPv4 address:     ^\d{1,3}(\.\d{1,3}){3}$
+  Lines containing ERROR: .*ERROR.*
+  Email address format:   ^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$
+  AWS access key:         AKIA[0-9A-Z]{16}
+
+CANNOT be matched with regex alone (Type 2 or higher):
+  Balanced parentheses:   ((()))  needs stack to count depth
+  Valid HTML:             needs stack for tag nesting
+  Valid JSON:             needs stack for nested structures
+  Palindromes:            racecar needs to remember first half
+  Matching XML open/close tags: <tag>...</tag> needs to remember tag name
+  Valid Python programs:  full programming language grammar
+
+The famous Stack Overflow answer "You cannot parse HTML with regex"
+is a direct consequence of the Chomsky hierarchy:
+HTML is Type 2 (context-free), regex is Type 3 (regular),
+and Type 3 is strictly less powerful than Type 2.
+```
+
+---
+
+## ReDoS — When Regex Becomes a Vulnerability
+
+Regular Expression Denial of Service occurs when a regex engine that uses backtracking (instead of Thompson's NFA simulation) encounters a carefully crafted input that causes exponential backtracking.
+
+```
+Vulnerable regex: (a+)+$
+  Intended to match: one or more groups of one or more a's
+                     anchored at end of string
+
+Malicious input: "aaaaaaaaaaaaaaaaaaaab"
+  (n a's followed by one non-matching character)
+
+Backtracking engine tries all possible groupings:
+  (aaaaaaaaaaaaaaaaaaaa)         -> tries 'b' against '$' -> fail
+  (aaaaaaaaaaaaaaaaaaa)(a)       -> fail
+  (aaaaaaaaaaaaaaaaaa)(aa)       -> fail
+  (aaaaaaaaaaaaaaaaaa)(a)(a)     -> fail
+  ... 2^n combinations for n a's ...
+
+For 20 a's:  ~1 million attempts
+For 30 a's:  ~1 billion attempts
+For 40 a's:  ~1 trillion attempts
+
+One HTTP request with a crafted string can peg a server's CPU
+at 100% for minutes or hours. Denial of service achieved.
+
+Real-world ReDoS victims:
+  2016: Stack Overflow went down for 34 minutes
+        Caused by: ^[\s\u200c\u200d\u180e]*|[\s\u200c\u200d\u180e]*$
+  2019: Cloudflare outage
+        Caused by: (?:(?:\"|'|\]|\}|\\|\d|(?:nan|infinity|true|false|null|
+                   undefined|symbol|math)|\`|\-|\+)+[)]*;?((?:\s|-|~|!|\{\}|
+                   |\|\||\+)*.*(?:.*=.*))
+
+Prevention:
+  Use Thompson NFA engines: Go's regexp, Rust regex, RE2 (Google)
+  These guarantee O(n) matching regardless of pattern
+  Avoid backtracking engines (PCRE) for user-controlled patterns
+  Test patterns with tools: regexploit, vulnregex
+  Use possessive quantifiers where available: (a++)+ instead of (a+)+
+```
+
+---
+
+## Where Automata Theory Appears in Computing
+
+The theory is not just regex. It underlies systems you use constantly:
+
+### Compilers — Two Levels of Theory
+
+```
+Lexer (tokeniser) — uses finite automata (Type 3):
+  Input: "int x = 5 + y;"
+  Output: [INT][IDENTIFIER:x][EQUALS][INTEGER:5][PLUS][IDENTIFIER:y][SEMICOLON]
+
+  Each token type is described by a regex / finite automaton:
+    INTEGER:    [0-9]+
+    IDENTIFIER: [a-zA-Z_][a-zA-Z0-9_]*
+    OPERATOR:   [+\-*\/=<>!&|]
+  GCC's lexer is a massive DFA generated from token regex patterns
+
+Parser — uses pushdown automata (Type 2):
+  Input tokens from lexer
+  Recognises nested grammatical structure using a stack:
+    if (x > 0) { y = x + 1; }  <- nested blocks need stack
+  yacc, bison, ANTLR generate parsers from context-free grammars
+```
+
+### TCP — A Finite State Machine
+
+TCP is literally a finite automaton. Every TCP connection is in one of these states:
+
+```
+TCP state machine:
+
+States:
+  CLOSED, LISTEN, SYN_SENT, SYN_RECEIVED, ESTABLISHED,
+  FIN_WAIT_1, FIN_WAIT_2, CLOSE_WAIT, CLOSING, LAST_ACK, TIME_WAIT
+
+Transitions (triggered by packets received or sent):
+  CLOSED   --passive open--> LISTEN
+  LISTEN   --SYN received--> SYN_RECEIVED
+  SYN_RECEIVED --SYN+ACK sent, ACK received--> ESTABLISHED
+  ESTABLISHED --FIN sent--> FIN_WAIT_1
+  FIN_WAIT_1  --ACK received--> FIN_WAIT_2
+  FIN_WAIT_2  --FIN received--> TIME_WAIT
+  TIME_WAIT   --2MSL timeout--> CLOSED
+
+This IS a finite automaton in the textbook sense.
+The Linux kernel implements this state machine in tcp.c.
+```
+
+### Hardware Design
+
+Every digital circuit with state is a finite automaton. Traffic lights, elevator controllers, vending machines, and the CPU's own control unit (from Chapter 01) are all finite state machines designed using state diagram tools that are direct applications of automata theory.
+
+### Network Packet Inspection
+
+Intrusion Detection Systems and firewalls perform pattern matching on packet payloads. Hardware implementations of finite automata — built into ASICs — run at line rate (10+ Gbps) to match thousands of patterns simultaneously against every packet.
+
+---
+
+## Regular Expressions in Cybersecurity Practice
+
+### Text Processing — The Foundation Tools
+
+```bash
+# grep — uses POSIX BRE or ERE depending on flags
+grep "error" /var/log/syslog
+grep -E "^[0-9]{4}-[0-9]{2}-[0-9]{2}" logfile    # ERE
+grep -P "(?<=POST\s)/api/\w+" access.log           # PCRE
+
+# sed — stream editor
+sed 's/password=\w+/password=REDACTED/g' config.txt
+
+# awk — pattern-action
+awk '/4[0-9]{2}/ {print $7}' access.log   # URLs of 4xx responses
+```
+
+### Input Validation
+
+```python
+import re
+
+# Validate email format before processing
+email_re = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+if not re.match(email_re, user_email):
+    raise ValueError("Invalid email format")
+
+# Ensure user_id is purely numeric (prevents SQL injection)
+if not re.match(r'^\d+$', user_id):
+    raise ValueError("user_id must be numeric")
+```
+
+### Web Application Firewall Patterns
+
+```
+SQL injection detection:
+  (?i)(union.*select|select.*from|insert.*into|drop.*table)
+  (?i)(\bor\b|\band\b).*=.*--
+  '.*OR.*'.*=.*'
+
+XSS detection:
+  <script[^>]*>.*?</script>
+  on\w+\s*=\s*["'][^"']*["']
+  javascript\s*:
+
+Path traversal:
+  \.\.\/|\.\.\\|%2e%2e%2f
+
+Command injection:
+  [;&|`$]|\b(cat|ls|whoami|id|uname)\b
+```
+
+### Secret and Credential Scanning
+
+```python
+# Patterns used by tools like truffleHog and gitleaks
+patterns = {
+    'aws_access_key':   r'AKIA[0-9A-Z]{16}',
+    'github_token':     r'ghp_[a-zA-Z0-9]{36}',
+    'private_key':      r'-----BEGIN (RSA |EC )?PRIVATE KEY-----',
+    'jwt_token':        r'eyJ[A-Za-z0-9-_]+\.eyJ[A-Za-z0-9-_]+\.[A-Za-z0-9-_]+',
+    'connection_string':r'[a-zA-Z]+://[^:]+:[^@]+@[^/]+/\w+',
+    'api_key_generic':  r'(?i)(api[_-]?key|apikey|api[_-]?secret)["\s:=]+[A-Za-z0-9_\-]{16,}',
+}
+```
+
+### Log Analysis and SIEM
+
+```python
+# Parse Apache access log line into structured fields
+apache_re = (
+    r'^(\S+)'           # IP address
+    r'\s+\S+\s+\S+'     # ident and auth (usually - -)
+    r'\s+\[([^\]]+)\]'  # timestamp
+    r'\s+"(\w+)'        # HTTP method
+    r'\s+(\S+)'         # request path
+    r'\s+\S+"'          # HTTP version
+    r'\s+(\d+)'         # status code
+    r'\s+(\d+)'         # response size
+)
+match = re.match(apache_re, log_line)
+if match:
+    ip, timestamp, method, path, status, size = match.groups()
+```
+
+### Malware Analysis
+
+```python
+# Extract indicators of compromise from malware binary strings
+ioc_patterns = {
+    'domain':    r'\b(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}\b',
+    'ipv4':      r'\b(?:\d{1,3}\.){3}\d{1,3}\b',
+    'url':       r'https?://(?:[-\w.]|(?:%[\da-fA-F]{2}))+',
+    'registry':  r'(?:HKEY_[A-Z_]+|HK[CL][MRU]?)\\[^\x00\n]+',
+    'file_path': r'[A-Za-z]:\\(?:[^\\/:*?"<>|\r\n]+\\)*[^\\/:*?"<>|\r\n]*',
+}
+
+for name, pattern in ioc_patterns.items():
+    matches = re.findall(pattern, binary_strings, re.IGNORECASE)
+    for match in matches:
+        print(f"{name}: {match}")
+```
+
+---
+
+## The Complete Picture — From Theory to Tool
+
+```
+1936  Turing Machine — defines what is computable at all
+1943  McCulloch-Pitts neurons — seeds finite automaton theory
+1951  Kleene — regular expressions and finite automata proved equivalent
+1956  Chomsky — four-level language hierarchy formalised
+1968  Ken Thompson — implements regex for Unix QED editor
+             converts regex to NFA, guarantees O(n) matching
+             brings 17 years of theory into practical computing
+1973  Unix ships grep, sed, awk — regex enters mainstream
+1986  POSIX standardises BRE (basic) and ERE (extended)
+1987  Perl adds backreferences, lookahead — exceeds strict regular languages
+             "regular expression" becomes a misnomer for PCRE patterns
+1994  PCRE library — most languages adopt it (Python, PHP, Java, .NET)
+2007  Google publishes RE2 — returns to Thompson NFA approach
+             guarantees O(n), used in Go, RE2/J, Rust regex crate
+             eliminates ReDoS vulnerability by design
+
+Today:
+  Regex: grep, sed, awk, Python re, JavaScript RegExp, WAFs,
+         IDS/IPS, SIEM, secret scanners, malware analysis,
+         compiler lexers, network packet inspection
+
+  Automata theory underlies: TCP state machine, compiler lexers
+  and parsers, hardware design, formal verification, game AI,
+  hardware packet inspection at line rate in silicon
+
+  The mathematics Kleene described in 1951 for abstract
+  theoretical purposes runs on billions of devices every second.
+```
+-e 
+---
+
+-e 
+---
+
+-e 
+---
+
+## Part IV — The Operating System
+
+*Chapters 8-10 define what the kernel is, what the OS is, how privilege is enforced in hardware, and how user programs request kernel services. These chapters answer: what lives in ring 0 and what lives in ring 3.*
+
+# Chapter 8: The Kernel and the OS — What They Are and Where They Live
+
+We now have a CPU that executes code, storage that holds data, and a philosophy about how an operating system should work. This chapter is where those three threads meet. The kernel provides one unified interface to every resource on the system — files, devices, network connections, processes. Understanding that interface is the key to understanding everything that runs on Linux.
+
+---
+
+## Everything is a File — The Central Philosophy
+
+Unix's most radical and enduring design decision was treating everything as a file. In most operating systems, different resources have different interfaces. Reading a disk file uses one set of functions. Sending network data uses a different set. Communicating between processes uses another. Unix collapsed all of this into one abstraction: the file. Every resource the kernel manages can be opened, read, written and closed using the same system calls.
+
+```
+A regular file on disk         → open, read, write, close
+A directory                    → open, read (to list entries), close
+A device (keyboard, disk)      → open, read, write, close
+A pipe between processes       → open (via pipe()), read, write, close
+A network connection (socket)  → open (via socket()), read, write, close
+A terminal                     → open, read, write, close
+A timer                        → open (timerfd), read, close
+A process's memory             → open (/proc/PID/mem), read, write
+```
+
+The program does not need to know what kind of resource it is talking to. It reads and writes bytes. The kernel handles the details. This is why you can redirect a program's output to a file, or pipe it to another program, or send it over a network — and the program itself does not change.
+
+---
+
+## Inodes — How the Filesystem Represents Everything
+
+## The Problem the Inode Solves
+
+When you create a file on disk, the filesystem needs to track many things about it: where its data is physically stored on disk, how large it is, when it was created, who owns it, what permissions it has, what type of thing it is. This metadata cannot be stored inside the file's data itself — that would corrupt the data. It needs a separate structure.
+
+That structure is the **inode** — short for index node.
+
+## What an Inode Contains
+
+Every file, directory, device, socket and symbolic link in a Unix filesystem has exactly one inode. The inode contains everything the filesystem knows about that thing — except its name.
+
+```
+Inode structure (ext4 filesystem):
+
+┌─────────────────────────────────────────────────────────┐
+│                        INODE                            │
+├─────────────────────────────────────────────────────────┤
+│  inode number        (unique identifier on this disk)   │
+│  file type           (regular, directory, symlink, ...)  │
+│  permissions         (rwxrwxrwx — owner, group, other)  │
+│  owner user ID       (who owns this file)               │
+│  owner group ID      (which group owns this file)       │
+│  size in bytes       (how large the data is)            │
+│  link count          (how many names point to this inode)│
+│  access time         (last time data was read)          │
+│  modification time   (last time data was changed)       │
+│  change time         (last time inode itself changed)   │
+│  block pointers      (addresses of data blocks on disk) │
+│    direct blocks[12] (first 12 data blocks — direct)   │
+│    indirect block    (points to block of block pointers)│
+│    double indirect   (points to block of indirect ptrs) │
+│    triple indirect   (one more level for huge files)    │
+└─────────────────────────────────────────────────────────┘
+```
+
+The block pointers are how the inode connects metadata to the actual data on disk. For small files, the 12 direct block pointers are enough — each pointer gives the disk address of one 4-kilobyte block, so files up to 48 kilobytes use only direct pointers. For larger files, the indirect pointer points to an entire block full of more block pointers — extending the range enormously. For very large files, double and triple indirection adds more levels.
+
+## The Critical Insight — Filenames Are Not in Inodes
+
+The filename is stored in a directory, not in the inode. A directory is itself a file — a special file containing a list of name-to-inode-number mappings called **directory entries** or **dirents**.
+
+```
+Directory entry structure:
+
+/home/leokadia/ directory contents:
+┌────────────────────────────────────────┐
+│  "Documents"    → inode 84921          │
+│  "Downloads"    → inode 84922          │
+│  "notes.txt"    → inode 91847         │
+│  "."            → inode 73001 (self)  │
+│  ".."           → inode 68440 (parent)│
+└────────────────────────────────────────┘
+
+inode 91847 (notes.txt):
+┌────────────────────────────────────────┐
+│  type: regular file                    │
+│  size: 4096 bytes                      │
+│  owner: leokadia (uid 1000)            │
+│  permissions: rw-r--r--               │
+│  block pointers: [disk block 204819]   │
+└────────────────────────────────────────┘
+
+disk block 204819:
+┌────────────────────────────────────────┐
+│  "this is the actual content of the   │
+│   file, stored on disk in raw blocks" │
+└────────────────────────────────────────┘
+```
+
+When you do `ls -l notes.txt`:
+1. The shell looks up `notes.txt` in the current directory's inode
+2. The directory inode points to a data block containing the directory entries
+3. The kernel finds the entry `"notes.txt" → inode 91847`
+4. The kernel reads inode 91847 to get permissions, size, ownership
+5. The kernel returns this information to `ls`
+6. `ls` formats and prints it
+
+When you read the file contents, step 6 continues: the kernel follows the block pointers in the inode to find the actual data blocks on disk and reads them.
+
+## Hard Links — Multiple Names, One Inode
+
+Because filenames are stored in directories and not in inodes, you can have multiple directory entries pointing to the same inode. This is called a hard link.
+
+```bash
+# Create a file
+echo "hello" > original.txt
+
+# Create a hard link — another name for the same inode
+ln original.txt hardlink.txt
+
+# Both names point to the same inode number
+ls -i original.txt hardlink.txt
+# 91847 original.txt
+# 91847 hardlink.txt   ← same inode number
+```
+
+The inode has a **link count** — how many directory entries point to it. When you delete a file with `rm`, you are removing a directory entry and decrementing the link count. The inode and its data are only freed when the link count reaches zero and no process has the file open.
+
+This is why `rm` is not called `delete` — it removes a name (a link), not necessarily the underlying data.
+
+## Symbolic Links — A Different Kind of Reference
+
+A symbolic link (symlink) is its own inode whose data block contains a path string — the path of the target. When the kernel encounters a symlink while resolving a path, it reads the target path from the symlink's data and continues resolving from there.
+
+```
+/usr/bin/python3 → symlink inode → data: "/usr/bin/python3.11"
+                                          ↓
+                             /usr/bin/python3.11 → real inode → actual interpreter
+```
+
+Unlike hard links, symlinks can cross filesystem boundaries and can point to directories. They can also be broken — if the target is deleted, the symlink points to nothing.
+
+## The /proc and /sys Pseudo-Filesystems
+
+The "everything is a file" philosophy extends to the kernel's own internal state via pseudo-filesystems. These do not store anything on disk — they are generated in memory by the kernel on demand.
+
+`/proc` exposes process information:
+```bash
+cat /proc/1/status          # see systemd's status
+cat /proc/cpuinfo           # see CPU information
+cat /proc/meminfo           # see memory usage
+ls /proc/self/fd            # see your shell's open file descriptors
+cat /proc/self/maps         # see your shell's memory map
+```
+
+`/sys` exposes hardware and kernel subsystem state:
+```bash
+cat /sys/class/net/eth0/speed    # network interface speed
+cat /sys/block/sda/size          # disk size in 512-byte sectors
+```
+
+These are not real files. Reading `/proc/meminfo` causes the kernel to generate the content on the fly from internal data structures. But because they look like files, every tool that reads files — `cat`, `grep`, `awk`, scripts — works on them without modification.
+
+## Inspecting Inodes on Your Machine
+
+```bash
+# See the inode number of any file
+ls -i /etc/passwd
+
+# See all inode information
+stat /etc/passwd
+
+# See filesystem inode usage
+df -i
+
+# Find all files with the same inode (hard links)
+find / -inum 91847 2>/dev/null
+
+# See directory entry details
+ls -la /etc/ | head -20
+```
+
+---
+
+
+---
+
+## System Calls — The Contract Between Userspace and Kernel
+
+## The Two Worlds
+
+A running Linux system has two distinct worlds separated by a hard boundary:
+
+**Userspace** — where all regular programs run. Your shell, your browser, your payment API, Python scripts. Code in userspace cannot directly touch hardware, cannot directly access other processes' memory, cannot modify kernel data structures. It operates in an unprivileged environment called ring 3 on x86 processors.
+
+**Kernel space** — where the kernel runs. The kernel can do anything: talk directly to hardware, manage memory, schedule processes, control devices. It runs in the most privileged mode, ring 0.
+
+This separation is enforced by the CPU in hardware. A userspace program that tries to execute a privileged instruction causes an immediate CPU exception — the program is stopped, the kernel takes control and typically sends a SIGSEGV signal (segmentation fault) to the offending process.
+
+```
+┌────────────────────────────────────────────────────────┐
+│                     USERSPACE                          │
+│   your program → glibc → ... → system call boundary   │
+├────────────────────────────────────────────────────────┤
+│  ← hardware boundary enforced by CPU privilege levels →│
+├────────────────────────────────────────────────────────┤
+│                    KERNEL SPACE                        │
+│   system call handler → kernel subsystems → hardware   │
+└────────────────────────────────────────────────────────┘
+```
+
+## What a System Call Is
+
+A system call is a controlled gate through the boundary. When a userspace program needs the kernel to do something — read a file, send network data, create a new process — it invokes a system call.
+
+The mechanism on x86-64:
+
+1. The program places the system call number in register `rax`
+2. The program places arguments in registers `rdi`, `rsi`, `rdx`, `r10`, `r8`, `r9`
+3. The program executes the `syscall` instruction
+4. The CPU switches from ring 3 to ring 0 automatically
+5. The CPU jumps to a fixed kernel entry point
+6. The kernel reads `rax` to know which system call was requested
+7. The kernel validates the arguments
+8. The kernel performs the requested operation
+9. The kernel places the return value in `rax`
+10. The CPU switches back from ring 0 to ring 3
+11. The program reads `rax` for the result
+
+```asm
+; Reading a file using a raw system call — no C library at all
+; This is what glibc does under the hood when you call read()
+
+mov rax, 0          ; system call number 0 = read
+mov rdi, 3          ; file descriptor 3 (some open file)
+mov rsi, buffer     ; address of buffer to read into
+mov rdx, 1024       ; number of bytes to read
+syscall             ; cross the boundary into the kernel
+
+; on return: rax contains bytes actually read, or negative error code
+```
+
+## The System Call Table
+
+Linux has a table mapping numbers to kernel functions. Every system call has an assigned number that never changes — removing or renumbering a system call would break every existing binary. The Linux kernel has preserved backward compatibility on system call numbers since the very first release.
+
+The most important system calls, grouped by what they do:
+
+```
+─── Process Management ─────────────────────────────────────
+
+fork()       number 57   Create a copy of the current process
+execve()     number 59   Replace current process with a new program
+exit()       number 60   Terminate the current process
+wait4()      number 61   Wait for a child process to finish
+getpid()     number 39   Get current process ID
+kill()       number 62   Send a signal to a process
+clone()      number 56   Create thread or process with fine-grained control
+
+─── File Operations ────────────────────────────────────────
+
+open()       number 2    Open a file, returns file descriptor
+read()       number 0    Read bytes from a file descriptor
+write()      number 1    Write bytes to a file descriptor
+close()      number 3    Close a file descriptor
+stat()       number 4    Get inode information about a file
+lseek()      number 8    Move position in a file
+mmap()       number 9    Map file or memory into address space
+unlink()     number 87   Remove a directory entry (delete a file)
+mkdir()      number 83   Create a directory
+rename()     number 82   Rename a file
+
+─── Network / Sockets ──────────────────────────────────────
+
+socket()     number 41   Create a socket
+bind()       number 49   Bind socket to address and port
+listen()     number 50   Mark socket as accepting connections
+accept()     number 43   Accept an incoming connection
+connect()    number 42   Connect socket to remote address
+send()       number 44   Send data through a socket
+recv()       number 45   Receive data from a socket
+
+─── Inter-Process Communication ────────────────────────────
+
+pipe()       number 22   Create a pipe between two file descriptors
+dup2()       number 33   Duplicate a file descriptor
+select()     number 23   Wait for activity on multiple file descriptors
+epoll_wait() number 232  Efficient wait for many file descriptors
+
+─── Memory ─────────────────────────────────────────────────
+
+brk()        number 12   Extend the heap (what malloc uses internally)
+mmap()       number 9    Map memory (also what malloc uses for large allocs)
+munmap()     number 11   Unmap memory
+mprotect()   number 10   Change memory page permissions
+```
+
+You can see every system call your program makes in real time:
+
+```bash
+# Trace all system calls made by ls
+strace ls
+
+# Trace only file-related calls
+strace -e trace=file ls
+
+# Count system calls and show statistics
+strace -c ls
+
+# Trace a running process by PID
+strace -p 1234
+```
+
+## The C Library as the System Call Wrapper
+
+Almost no program calls system calls directly using inline assembly. Instead, the C standard library (glibc on Linux) provides wrapper functions that handle the details. When you call `printf()` in C, the chain is:
+
+```
+printf("hello\n")
+        ↓
+glibc's printf() — formats the string
+        ↓
+glibc's write() wrapper — sets up registers, executes syscall
+        ↓
+kernel's sys_write() — writes bytes to the file descriptor
+        ↓
+file descriptor 1 → terminal driver → screen
+```
+
+The C library exists to make system calls ergonomic. It handles error codes (converting negative return values to `errno`), provides buffering (so you do not make a system call for every single byte), and wraps platform-specific details so C code is portable.
+
+## System Calls and Security
+
+System calls are the only way into the kernel. This makes them the security boundary. Every sandboxing and isolation technique ultimately works by restricting which system calls a process can make:
+
+- **seccomp** — a Linux kernel feature that installs a filter on which system calls a process is allowed to make. Docker uses this by default.
+- **AppArmor / SELinux** — intercept system calls and check them against a policy before allowing them
+- **ptrace** — the system call used by debuggers and strace to intercept and inspect other processes' system calls
+
+If you can restrict a process's system calls, you limit what damage it can do even if it is compromised. A process with no access to `fork()`, `exec()`, or `socket()` cannot spawn new processes or open network connections — even with full control of its own code.
+
+---
+
+
+---
+
+-e 
+---
+
+-e 
+---
+
+-e 
+---
+
+# Chapter 10: System Calls and Function Calls — The Precise Difference
+
+## System Calls vs Function Calls — The Precise Difference
+
+These look similar in source code but are completely different mechanisms at the hardware level.
+
+### Function Calls — Staying in the Same Ring
+
+A function call stays entirely within the same privilege level. It uses the stack and the call instruction.
+
+```c
+// Function call — everything in ring 3
+int result = add(5, 3);
+
+// What the CPU does:
+// 1. Evaluate arguments (5 and 3)
+// 2. Push return address onto the stack
+// 3. Jump to add() function's code
+// 4. add() executes (still in ring 3)
+// 5. add() executes RET instruction
+// 6. CPU pops return address from stack
+// 7. CPU jumps back to the instruction after the call
+// 8. result = return value from RAX register
+
+// All of this happens in ring 3
+// No privilege change
+// No kernel involvement
+// No CPU mode switch
+// Just a jump with a saved return address
+```
+
+In assembly:
+```asm
+; Calling add(5, 3) — pure ring 3 operation
+mov edi, 5          ; first argument
+mov esi, 3          ; second argument
+call add            ; push RIP+1 to stack, jump to add
+; ... add executes and returns ...
+; result now in EAX
+```
+
+### System Calls — Crossing the Ring Boundary
+
+A system call crosses from ring 3 to ring 0. It uses the `SYSCALL` instruction (x86-64) or `SVC` (ARM64).
+
+```c
+// System call — crosses ring boundary
+ssize_t bytes = write(1, "hello", 5);
+
+// What glibc does:
+// 1. Places syscall number (1 = write) in RAX
+// 2. Places arguments in RDI, RSI, RDX
+// 3. Executes SYSCALL instruction
+
+// What SYSCALL instruction does in hardware:
+// 1. CPU saves current RIP and RFLAGS
+// 2. CPU reads LSTAR register (kernel set this at boot)
+// 3. CPU atomically changes CPL from 3 to 0
+// 4. CPU jumps to LSTAR address (kernel's syscall entry)
+
+// Kernel executes (in ring 0):
+// 1. Saves all user registers
+// 2. Reads syscall number from RAX (= 1 = write)
+// 3. Validates arguments (is fd 1 valid? is buffer accessible?)
+// 4. Performs write (calls kernel's write implementation)
+// 5. Places return value in RAX
+// 6. Executes SYSRET instruction
+
+// SYSRET instruction does in hardware:
+// 1. CPU atomically changes CPL from 0 to 3
+// 2. CPU restores RIP and RFLAGS
+// 3. User program resumes
+```
+
+### Side by Side Comparison
+
+```
+                    Function Call              System Call
+                    ─────────────────          ───────────────────────
+Instruction:        CALL (x86) / BL (ARM)      SYSCALL (x86) / SVC (ARM)
+Ring change:        none (stays ring 3)        ring 3 -> ring 0 -> ring 3
+Stack used:         user stack                 switches to kernel stack
+Destination:        any address in text        fixed LSTAR/VBAR address
+                    segment                    (kernel controls this)
+Entry point:        wherever you call to       only one entry point
+                    (can be any function)      (kernel's syscall handler)
+Time cost:          ~1 nanosecond              ~100-300 nanoseconds
+What executes:      your code or library code  kernel code
+Can access:         your process's memory      all memory (ring 0)
+Example:            printf(), malloc(), add()  write(), open(), fork()
+Interceptable:      only with debugging tools  glibc wraps them
+```
+
+```bash
+# Count function calls: cannot easily count (too many, too fast)
+
+# Count system calls: strace does this
+strace -c ls
+# Shows every system call with count, time, errors
+# openat, read, write, close, mmap, etc.
+
+# See that function calls are NOT system calls
+strace -c bash -c 'x=$((5+3)); echo $x'
+# The arithmetic $((5+3)) makes ZERO system calls
+# It is all done by the CPU executing instructions in ring 3
+# Only the echo causes system calls (write())
+```
+
+---
+-e 
+---
+
+-e 
+---
+
+## Part V — The Unix Philosophy
+
+*Chapters 11-13 cover the history and design decisions that shaped Linux. The ASR-33 teletype, Unix origins, the shell, the terminal, and the 'everything is a file' philosophy that the kernel implements.*
+
+# Chapter 11: History and Philosophy — ASR-33, Unix, C, BSD and Linux
 
 Before a single line of kernel code, before partitions and filesystems, before any of the technical machinery — there was a philosophy. That philosophy was shaped by a mechanical typewriter from 1963, two engineers in a Bell Labs office in 1969, a university research group in Berkeley, and a Finnish student in 1991. Understanding where Linux comes from explains why it works the way it does. Every design decision you will encounter in the rest of this document traces back to this chapter.
 
@@ -4774,1120 +7355,10 @@ Your program writes the same `read()` call. The kernel routes it to the right im
 -e 
 ---
 
-# Chapter 06: Automata Theory, Formal Languages and Regular Expressions
-
-Chapters 01-04 covered hardware and privilege. This chapter steps into the mathematical theory that underlies how computers recognise patterns, how compilers understand programming languages, how network protocols are verified, and how the text tools you use daily in cybersecurity actually work. The theory comes before the practice because understanding the mathematics makes the tools — and their limitations — completely clear.
-
----
-
-## The Question That Started It All
-
-In the 1930s, mathematicians asked a fundamental question before electronic computers even existed:
-
-> **What does it mean to compute something? What problems can be solved mechanically by following rules — and what problems cannot be solved at all?**
-
-Three independent answers emerged simultaneously, all equivalent to each other:
-
-```
-1936 — Alan Turing:
-  Defined computation using the Turing Machine
-  A theoretical device: tape + read-write head + state table
-  "A problem is computable if a Turing Machine can solve it"
-  Defined the outer limit of what any computer can ever do
-
-1936 — Alonzo Church:
-  Defined computation using Lambda Calculus
-  Mathematical functions and substitution rules
-  Proved equivalent to Turing Machines — same power
-
-1943 — McCulloch and Pitts:
-  Modelled brain neurons as mathematical logic circuits
-  Networks of simple on/off elements could compute
-  Seeded both neural network theory AND finite automaton theory
-```
-
-These converged into **computability theory** and **formal language theory** — the mathematical study of what machines can recognise and compute.
-
----
-
-## What Is a Formal Language
-
-In mathematics, a **language** is not English or French. It is simply a set of strings — a collection of sequences of symbols.
-
-```
-Alphabet: the set of allowed symbols
-  Binary alphabet: {0, 1}
-  ASCII alphabet: all printable characters
-  Programming language alphabet: {a-z, A-Z, 0-9, +, -, *, /, (, ), ...}
-
-String: a finite sequence of symbols from the alphabet
-  Over {a, b}: "", "a", "b", "ab", "aba", "bbb"
-
-Language: any set of strings over an alphabet
-  Language 1: all strings of only digits
-              {"0", "1", ..., "9", "00", "01", ..., "123", ...}
-
-  Language 2: all strings with equal numbers of 'a' and 'b'
-              {"", "ab", "ba", "aabb", "abba", "abab", ...}
-
-  Language 3: all valid Python programs
-              (a very large set, but still a set of strings)
-```
-
-The central question of formal language theory: **given a string and a language, can a machine decide whether the string belongs to the language?** And crucially — what kind of machine is required for each type of language?
-
----
-
-## The Chomsky Hierarchy — Four Classes of Languages
-
-Noam Chomsky formalised a hierarchy of languages in 1956. Each class requires a more powerful machine to recognise it. This hierarchy is one of the most important results in computer science.
-
-```
-Type 3 — Regular Languages
-  Most restricted, simplest
-  Machine required: Finite Automaton (no memory beyond current state)
-  Notation: Regular Expressions
-  Examples: digit strings, email format, IP address patterns
-  Limitation: cannot count, cannot handle nested structures
-
-Type 2 — Context-Free Languages
-  More powerful
-  Machine required: Pushdown Automaton (finite automaton + a stack)
-  Notation: Context-Free Grammars
-  Examples: arithmetic expressions, programming language syntax,
-            balanced parentheses, HTML structure
-  The stack allows counting depth and matching nested structures
-
-Type 1 — Context-Sensitive Languages
-  Machine required: Linear Bounded Automaton
-  More powerful than pushdown but bounded memory
-  Rare in practice
-
-Type 0 — Recursively Enumerable Languages
-  Most general, most powerful
-  Machine required: Turing Machine (full computation)
-  Includes everything computable
-  Some problems in this class are undecidable (halting problem)
-```
-
-This hierarchy directly explains what each tool can and cannot do. Regular expressions sit at Type 3 — the simplest level. This is not a weakness of the notation — it is a precise mathematical statement about what finite automata can recognise.
-
----
-
-## Finite Automata — The Machine Behind Regular Expressions
-
-A **finite automaton** is the most minimal conceivable computing machine. It has:
-
-- A finite set of **states** — like positions on a board game
-- A **current state** it occupies right now
-- **Transition rules** — "if in state X and you read symbol Y, move to state Z"
-- A designated **start state**
-- A set of **accept states** — states that mean "yes, this string is in the language"
-
-It reads input one character at a time, follows transitions, and accepts or rejects based on its final state.
-
-```
-Example: automaton that accepts strings containing "cat"
-
-States: S0 (start), S1 (saw c), S2 (saw ca), S3 (saw cat — ACCEPT)
-
-Transitions:
-  S0 --c--> S1       (saw 'c', might be start of "cat")
-  S0 --other--> S0   (anything else, stay waiting)
-  S1 --a--> S2       (saw 'ca')
-  S1 --c--> S1       (new 'c', restart c-tracking)
-  S1 --other--> S0
-  S2 --t--> S3       (saw "cat" — accept!)
-  S2 --other--> S0
-  S3 --anything--> S3 (once accepted, stay accepted)
-
-Running "concatenate":
-  c -> S1
-  o -> S0  (not 'a', back to start)
-  n -> S0
-  c -> S1
-  a -> S2
-  t -> S3  ACCEPT
-  e -> S3  (stay)
-  ...remaining characters...
-  End in S3 -> "concatenate" CONTAINS "cat" -> MATCH
-```
-
-The crucial limitation: **a finite automaton has no memory beyond its current state.** It cannot count. It cannot remember what it saw three characters ago. It can only follow rules based on current state and current character.
-
-### DFA vs NFA — Two Equivalent Flavours
-
-```
-DFA — Deterministic Finite Automaton:
-  From any state, each input symbol leads to exactly ONE next state
-  No ambiguity
-  Efficient to execute: one transition per character
-  Guaranteed O(n) matching time (n = input length)
-
-NFA — Nondeterministic Finite Automaton:
-  From a state, one input symbol may lead to MULTIPLE possible next states
-  The automaton is in ALL possible states simultaneously (superposition)
-  Easier to construct from a regex pattern
-  Converted to DFA for efficient execution
-
-Key theorem:
-  DFA and NFA recognise exactly the same set of languages
-  Every NFA can be converted to an equivalent DFA
-  (the DFA may have exponentially more states, but it exists)
-```
-
----
-
-## Kleene's Insight — Regular Expressions and Finite Automata Are Equivalent
-
-Stephen Kleene proved in 1951 the fundamental theorem:
-
-> **A language can be recognised by a finite automaton if and only if it can be described by a regular expression. They are two notations for exactly the same mathematical concept.**
-
-```
-Regular expression          Equivalent finite automaton
-──────────────────          ──────────────────────────
-a                           automaton accepting only "a"
-ab                          automaton accepting only "ab"
-a|b                         automaton accepting "a" or "b"
-a*                          automaton accepting "", "a", "aa", "aaa"...
-[0-9]+                      automaton with digit-loop needing at least one digit
-(cat|dog)                   two paths merging at one accept state
-
-Conversion algorithms:
-  regex -> NFA:  Thompson's construction (Ken Thompson, 1968)
-  NFA -> DFA:    Subset construction algorithm
-  DFA -> regex:  Kleene's algorithm
-  DFA -> minimal DFA: Hopcroft's minimisation algorithm
-
-All four representations are interchangeable.
-```
-
-The **word "regular"** in regular expression comes from this: languages that are recognised by finite automata were defined by Kleene as "regular" — meaning they follow strict rules that a finite, memoryless machine can enforce. It has nothing to do with CPU registers. The coincidence of similar-sounding names in two different fields causes common confusion.
-
----
-
-## Ken Thompson — Bringing Theory Into Practice (1968)
-
-Kleene's 1951 mathematical notation sat in theoretical computer science for 17 years. **Ken Thompson** — the same person who created Unix and the first Unix shell — brought regular expressions into practical computing in 1968.
-
-Thompson was building a text editor (QED, ancestor of Unix `ed`) and needed users to be able to specify text search patterns. He took Kleene's notation and implemented it efficiently by converting regex patterns to NFAs and simulating them.
-
-Thompson's 1968 implementation guaranteed **O(n) matching time** — matching took time proportional to the length of the input string, regardless of pattern complexity. This guarantee comes directly from the finite automaton theory: simulating all NFA states simultaneously means you never backtrack.
-
-```
-Thompson's NFA simulation (1968):
-
-Instead of: try one path, if it fails backtrack and try another
-            (exponential worst case)
-
-Do this:    maintain the SET of all states the NFA could be in
-            after reading each character
-            update the set on each character
-            if the set contains any accept state: match
-
-Example with pattern (a|b)*c and input "aabbc":
-
-After 'a': {S1, S2}        (both a-path and b-path states active)
-After 'a': {S1, S2}        (still in both a-path states)
-After 'b': {S1, S2}        (b transitions keep us in loop states)
-After 'b': {S1, S2}
-After 'c': {S3}            (c transition reaches accept state)
-Result: MATCH
-
-Only one pass through the input.
-Never more work than the number of states times input length.
-O(n * m) where n=input length, m=number of NFA states
-Guaranteed no exponential blowup.
-```
-
----
-
-## The Regex Syntax — What Each Symbol Means
-
-```
-Literal characters:
-  a        matches exactly 'a'
-  abc      matches exactly "abc"
-
-Metacharacters (special meaning):
-  .        matches any single character except newline
-  ^        anchors match at start of string (or line with MULTILINE)
-  $        anchors match at end of string (or line)
-
-Quantifiers (how many times):
-  *        zero or more of the preceding element
-  +        one or more of the preceding element
-  ?        zero or one of the preceding element
-  {n}      exactly n times
-  {n,m}    between n and m times (inclusive)
-  {n,}     n or more times
-
-Character classes:
-  [abc]    matches 'a', 'b', or 'c'
-  [a-z]    matches any lowercase letter
-  [0-9]    matches any digit
-  [^abc]   matches anything EXCEPT 'a', 'b', 'c'
-
-Shorthand character classes:
-  \d       any digit [0-9]
-  \D       any non-digit
-  \w       any word character [a-zA-Z0-9_]
-  \W       any non-word character
-  \s       any whitespace (space, tab, newline)
-  \S       any non-whitespace
-
-Grouping and alternation:
-  (abc)    group — treats "abc" as a unit, also captures match
-  (?:abc)  non-capturing group — unit but no capture
-  a|b      alternation — matches 'a' or 'b'
-
-Anchors:
-  \b       word boundary (between \w and \W)
-  \B       non-word boundary
-
-PCRE extensions (beyond strict regular languages):
-  (?=...)  positive lookahead — match only if followed by ...
-  (?!...)  negative lookahead
-  (?<=...) positive lookbehind
-  \1       backreference to capture group 1 (technically non-regular)
-```
-
----
-
-## What Regex Can and Cannot Do — The Boundary
-
-```
-CAN be matched with regex alone (Type 3 — regular):
-  Valid integer:          ^-?[0-9]+$
-  Valid hex colour:       ^#[0-9A-Fa-f]{6}$
-  Valid IPv4 address:     ^\d{1,3}(\.\d{1,3}){3}$
-  Lines containing ERROR: .*ERROR.*
-  Email address format:   ^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$
-  AWS access key:         AKIA[0-9A-Z]{16}
-
-CANNOT be matched with regex alone (Type 2 or higher):
-  Balanced parentheses:   ((()))  needs stack to count depth
-  Valid HTML:             needs stack for tag nesting
-  Valid JSON:             needs stack for nested structures
-  Palindromes:            racecar needs to remember first half
-  Matching XML open/close tags: <tag>...</tag> needs to remember tag name
-  Valid Python programs:  full programming language grammar
-
-The famous Stack Overflow answer "You cannot parse HTML with regex"
-is a direct consequence of the Chomsky hierarchy:
-HTML is Type 2 (context-free), regex is Type 3 (regular),
-and Type 3 is strictly less powerful than Type 2.
-```
-
----
-
-## ReDoS — When Regex Becomes a Vulnerability
-
-Regular Expression Denial of Service occurs when a regex engine that uses backtracking (instead of Thompson's NFA simulation) encounters a carefully crafted input that causes exponential backtracking.
-
-```
-Vulnerable regex: (a+)+$
-  Intended to match: one or more groups of one or more a's
-                     anchored at end of string
-
-Malicious input: "aaaaaaaaaaaaaaaaaaaab"
-  (n a's followed by one non-matching character)
-
-Backtracking engine tries all possible groupings:
-  (aaaaaaaaaaaaaaaaaaaa)         -> tries 'b' against '$' -> fail
-  (aaaaaaaaaaaaaaaaaaa)(a)       -> fail
-  (aaaaaaaaaaaaaaaaaa)(aa)       -> fail
-  (aaaaaaaaaaaaaaaaaa)(a)(a)     -> fail
-  ... 2^n combinations for n a's ...
-
-For 20 a's:  ~1 million attempts
-For 30 a's:  ~1 billion attempts
-For 40 a's:  ~1 trillion attempts
-
-One HTTP request with a crafted string can peg a server's CPU
-at 100% for minutes or hours. Denial of service achieved.
-
-Real-world ReDoS victims:
-  2016: Stack Overflow went down for 34 minutes
-        Caused by: ^[\s\u200c\u200d\u180e]*|[\s\u200c\u200d\u180e]*$
-  2019: Cloudflare outage
-        Caused by: (?:(?:\"|'|\]|\}|\\|\d|(?:nan|infinity|true|false|null|
-                   undefined|symbol|math)|\`|\-|\+)+[)]*;?((?:\s|-|~|!|\{\}|
-                   |\|\||\+)*.*(?:.*=.*))
-
-Prevention:
-  Use Thompson NFA engines: Go's regexp, Rust regex, RE2 (Google)
-  These guarantee O(n) matching regardless of pattern
-  Avoid backtracking engines (PCRE) for user-controlled patterns
-  Test patterns with tools: regexploit, vulnregex
-  Use possessive quantifiers where available: (a++)+ instead of (a+)+
-```
-
----
-
-## Where Automata Theory Appears in Computing
-
-The theory is not just regex. It underlies systems you use constantly:
-
-### Compilers — Two Levels of Theory
-
-```
-Lexer (tokeniser) — uses finite automata (Type 3):
-  Input: "int x = 5 + y;"
-  Output: [INT][IDENTIFIER:x][EQUALS][INTEGER:5][PLUS][IDENTIFIER:y][SEMICOLON]
-
-  Each token type is described by a regex / finite automaton:
-    INTEGER:    [0-9]+
-    IDENTIFIER: [a-zA-Z_][a-zA-Z0-9_]*
-    OPERATOR:   [+\-*\/=<>!&|]
-  GCC's lexer is a massive DFA generated from token regex patterns
-
-Parser — uses pushdown automata (Type 2):
-  Input tokens from lexer
-  Recognises nested grammatical structure using a stack:
-    if (x > 0) { y = x + 1; }  <- nested blocks need stack
-  yacc, bison, ANTLR generate parsers from context-free grammars
-```
-
-### TCP — A Finite State Machine
-
-TCP is literally a finite automaton. Every TCP connection is in one of these states:
-
-```
-TCP state machine:
-
-States:
-  CLOSED, LISTEN, SYN_SENT, SYN_RECEIVED, ESTABLISHED,
-  FIN_WAIT_1, FIN_WAIT_2, CLOSE_WAIT, CLOSING, LAST_ACK, TIME_WAIT
-
-Transitions (triggered by packets received or sent):
-  CLOSED   --passive open--> LISTEN
-  LISTEN   --SYN received--> SYN_RECEIVED
-  SYN_RECEIVED --SYN+ACK sent, ACK received--> ESTABLISHED
-  ESTABLISHED --FIN sent--> FIN_WAIT_1
-  FIN_WAIT_1  --ACK received--> FIN_WAIT_2
-  FIN_WAIT_2  --FIN received--> TIME_WAIT
-  TIME_WAIT   --2MSL timeout--> CLOSED
-
-This IS a finite automaton in the textbook sense.
-The Linux kernel implements this state machine in tcp.c.
-```
-
-### Hardware Design
-
-Every digital circuit with state is a finite automaton. Traffic lights, elevator controllers, vending machines, and the CPU's own control unit (from Chapter 01) are all finite state machines designed using state diagram tools that are direct applications of automata theory.
-
-### Network Packet Inspection
-
-Intrusion Detection Systems and firewalls perform pattern matching on packet payloads. Hardware implementations of finite automata — built into ASICs — run at line rate (10+ Gbps) to match thousands of patterns simultaneously against every packet.
-
----
-
-## Regular Expressions in Cybersecurity Practice
-
-### Text Processing — The Foundation Tools
-
-```bash
-# grep — uses POSIX BRE or ERE depending on flags
-grep "error" /var/log/syslog
-grep -E "^[0-9]{4}-[0-9]{2}-[0-9]{2}" logfile    # ERE
-grep -P "(?<=POST\s)/api/\w+" access.log           # PCRE
-
-# sed — stream editor
-sed 's/password=\w+/password=REDACTED/g' config.txt
-
-# awk — pattern-action
-awk '/4[0-9]{2}/ {print $7}' access.log   # URLs of 4xx responses
-```
-
-### Input Validation
-
-```python
-import re
-
-# Validate email format before processing
-email_re = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
-if not re.match(email_re, user_email):
-    raise ValueError("Invalid email format")
-
-# Ensure user_id is purely numeric (prevents SQL injection)
-if not re.match(r'^\d+$', user_id):
-    raise ValueError("user_id must be numeric")
-```
-
-### Web Application Firewall Patterns
-
-```
-SQL injection detection:
-  (?i)(union.*select|select.*from|insert.*into|drop.*table)
-  (?i)(\bor\b|\band\b).*=.*--
-  '.*OR.*'.*=.*'
-
-XSS detection:
-  <script[^>]*>.*?</script>
-  on\w+\s*=\s*["'][^"']*["']
-  javascript\s*:
-
-Path traversal:
-  \.\.\/|\.\.\\|%2e%2e%2f
-
-Command injection:
-  [;&|`$]|\b(cat|ls|whoami|id|uname)\b
-```
-
-### Secret and Credential Scanning
-
-```python
-# Patterns used by tools like truffleHog and gitleaks
-patterns = {
-    'aws_access_key':   r'AKIA[0-9A-Z]{16}',
-    'github_token':     r'ghp_[a-zA-Z0-9]{36}',
-    'private_key':      r'-----BEGIN (RSA |EC )?PRIVATE KEY-----',
-    'jwt_token':        r'eyJ[A-Za-z0-9-_]+\.eyJ[A-Za-z0-9-_]+\.[A-Za-z0-9-_]+',
-    'connection_string':r'[a-zA-Z]+://[^:]+:[^@]+@[^/]+/\w+',
-    'api_key_generic':  r'(?i)(api[_-]?key|apikey|api[_-]?secret)["\s:=]+[A-Za-z0-9_\-]{16,}',
-}
-```
-
-### Log Analysis and SIEM
-
-```python
-# Parse Apache access log line into structured fields
-apache_re = (
-    r'^(\S+)'           # IP address
-    r'\s+\S+\s+\S+'     # ident and auth (usually - -)
-    r'\s+\[([^\]]+)\]'  # timestamp
-    r'\s+"(\w+)'        # HTTP method
-    r'\s+(\S+)'         # request path
-    r'\s+\S+"'          # HTTP version
-    r'\s+(\d+)'         # status code
-    r'\s+(\d+)'         # response size
-)
-match = re.match(apache_re, log_line)
-if match:
-    ip, timestamp, method, path, status, size = match.groups()
-```
-
-### Malware Analysis
-
-```python
-# Extract indicators of compromise from malware binary strings
-ioc_patterns = {
-    'domain':    r'\b(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}\b',
-    'ipv4':      r'\b(?:\d{1,3}\.){3}\d{1,3}\b',
-    'url':       r'https?://(?:[-\w.]|(?:%[\da-fA-F]{2}))+',
-    'registry':  r'(?:HKEY_[A-Z_]+|HK[CL][MRU]?)\\[^\x00\n]+',
-    'file_path': r'[A-Za-z]:\\(?:[^\\/:*?"<>|\r\n]+\\)*[^\\/:*?"<>|\r\n]*',
-}
-
-for name, pattern in ioc_patterns.items():
-    matches = re.findall(pattern, binary_strings, re.IGNORECASE)
-    for match in matches:
-        print(f"{name}: {match}")
-```
-
----
-
-## The Complete Picture — From Theory to Tool
-
-```
-1936  Turing Machine — defines what is computable at all
-1943  McCulloch-Pitts neurons — seeds finite automaton theory
-1951  Kleene — regular expressions and finite automata proved equivalent
-1956  Chomsky — four-level language hierarchy formalised
-1968  Ken Thompson — implements regex for Unix QED editor
-             converts regex to NFA, guarantees O(n) matching
-             brings 17 years of theory into practical computing
-1973  Unix ships grep, sed, awk — regex enters mainstream
-1986  POSIX standardises BRE (basic) and ERE (extended)
-1987  Perl adds backreferences, lookahead — exceeds strict regular languages
-             "regular expression" becomes a misnomer for PCRE patterns
-1994  PCRE library — most languages adopt it (Python, PHP, Java, .NET)
-2007  Google publishes RE2 — returns to Thompson NFA approach
-             guarantees O(n), used in Go, RE2/J, Rust regex crate
-             eliminates ReDoS vulnerability by design
-
-Today:
-  Regex: grep, sed, awk, Python re, JavaScript RegExp, WAFs,
-         IDS/IPS, SIEM, secret scanners, malware analysis,
-         compiler lexers, network packet inspection
-
-  Automata theory underlies: TCP state machine, compiler lexers
-  and parsers, hardware design, formal verification, game AI,
-  hardware packet inspection at line rate in silicon
-
-  The mathematics Kleene described in 1951 for abstract
-  theoretical purposes runs on billions of devices every second.
-```
 -e 
 ---
 
-# Chapter 07: How Code Works — Machine Code, Assembly, C and Compilers
-
-The CPU executes machine code. Everything else — assembly, C, Python — is a layer of abstraction on top of that reality. Understanding how code gets from human-readable source to bytes the CPU executes is essential before we can understand how the kernel itself is built, and later how memory vulnerabilities work.
-
----
-
-## Machine Code — What the Central Processing Unit Actually Reads
-
-Machine code is a sequence of bytes where each byte or group of bytes encodes a specific action the central processing unit should take. These actions are things like: move a value into a register, add two registers together, jump to a different address, compare two values, call the operating system.
-
-Every central processing unit architecture has its own instruction set — its own dictionary of what each byte pattern means. An x86-64 byte pattern means something completely different to an ARM processor. This is why a program built for x86 will not run on an ARM processor without rebuilding or emulation.
-
----
-
-## Assembly Language — Assembled, Not Compiled
-
-Assembly language is a thin human-readable layer that maps almost directly to machine code instructions. Each assembly instruction corresponds to one machine code instruction. The program that converts assembly to machine code is called an **assembler**, and the process is called **assembling** — not compiling.
-
-This distinction matters because an assembler and a compiler do fundamentally different things:
-
-| | Assembler | Compiler |
-|---|---|---|
-| Tool examples | `nasm`, `gas`, `as` | `gcc`, `clang`, `rustc` |
-| Process name | Assembling | Compiling |
-| Translation ratio | Nearly 1 to 1 — one instruction in, one instruction out | Many to many — one line in, many instructions out |
-| Intelligence | Almost none — a lookup table | Heavy — parsing, type checking, optimisation, code generation |
-| Decisions made | None — outputs exactly what you wrote | Many — chooses registers, reorders instructions, eliminates dead code |
-| Output | Machine code | Machine code |
-
-An assembler sees `mov eax, 5` and looks up that this maps to bytes `B8 05 00 00 00`. That is the entirety of its job — mechanical substitution of names for bytes. No understanding of what the code does, no optimisation, no decisions.
-
-A compiler sees `int x = a + b;` and must decide: which registers to use, whether to keep the variable in a register or write it to memory, whether to inline the operation, whether this expression is even needed at all. It makes hundreds of decisions per line of source code.
-
-```asm
-; Assembly: add 5 + 3 and exit with result
-; Written by a human, assembled by nasm or gas
-
-section .text
-global _start
-
-_start:
-    mov eax, 5          ; put the value 5 into register eax
-    mov ebx, 3          ; put the value 3 into register ebx
-    add eax, ebx        ; add ebx to eax, result stays in eax
-
-    mov edi, eax        ; move result to edi (exit code argument)
-    mov eax, 60         ; 60 is the syscall number for exit
-    syscall             ; ask the kernel to exit
-```
-
-The assembler converts this with a one-to-one substitution:
-
-```
-B8 05 00 00 00    ← mov eax, 5
-BB 03 00 00 00    ← mov ebx, 3
-01 D8             ← add eax, ebx
-89 C7             ← mov edi, eax
-B8 3C 00 00 00    ← mov eax, 60
-0F 05             ← syscall
-```
-
-Six instructions written, six instructions produced. The assembler is essentially a lookup table — it swaps names for bytes. No significant translation happens.
-
----
-
-## C Language — Compiled to Machine Code via GCC
-
-C is a higher-level language. One line of C can expand into many machine code instructions. The GCC compiler reads your C source file, understands what you intend, applies optimisations, and produces machine code that achieves the same result — often more efficiently than hand-written assembly for complex programs.
-
-```c
-/* The same addition in C */
-#include <stdlib.h>
-
-int add(int a, int b) {
-    return a + b;
-}
-
-int main() {
-    int result = add(5, 3);
-    exit(result);
-}
-```
-
-GCC produces significantly more machine code than the assembly version because it must:
-
-- Set up and tear down a proper call stack frame for each function
-- Follow the C calling convention for passing arguments in the correct registers
-- Add a hidden startup routine (`_start`) that runs before your `main()` to initialise the C runtime environment
-- Link in the standard library functions like `exit()`
-- Handle the case where `main()` returns normally (not just via `exit()`)
-
-### What is Actually Different Between Assembled and Compiled Output
-
-Both assembling and compiling produce machine code in the ELF (Executable and Linkable Format) container on Linux. The ELF format is the same wrapper for both. The machine code inside is the same format. The central processing unit cannot tell which process produced a given instruction — a byte is a byte.
-
-The differences are in what surrounds and accompanies your code:
-
-| Aspect | Hand-written Assembly (assembled) | C (compiled by GCC) |
-|---|---|---|
-| Startup code | Only what you write | GCC adds hidden `_start`, C runtime initialisation, then calls `main()` |
-| Instruction count | Exactly what you wrote | Many more — stack frames, calling conventions, safety checks |
-| Standard library | None unless you write it | Linked in (libc, ld-linux.so) |
-| Binary size | Tiny — as small as tens of bytes | Larger — thousands of bytes minimum for a hello world |
-| Control | Total — every instruction is yours | Less — GCC makes register and optimisation decisions |
-| Safety | None — you manage everything manually | More — GCC can add stack canaries, bounds hints |
-| CPU execution | Identical — same fetch-decode-execute loop | Identical — same fetch-decode-execute loop |
-
-The central processing unit executes both identically. Once a byte is in the instruction pipeline, the origin — whether assembled or compiled — is completely irrelevant to the hardware.
-
----
-
-## The ELF Binary Format — The Same Container for Both
-
-On Linux, all executables — whether assembled or compiled — are wrapped in the ELF (Executable and Linkable Format) container. ELF has a standard structure:
-
-```
-ELF Binary File
-├── ELF Header      (metadata: architecture, entry point address, section locations)
-├── .text section   (your actual machine code — what the CPU executes)
-├── .data section   (initialised global variables)
-├── .bss section    (uninitialised global variables)
-├── .rodata section (read-only data — string literals)
-└── .dynamic section (shared libraries this binary needs at runtime)
-```
-
-You can inspect any binary on your machine:
-
-```bash
-# See the machine code inside any binary
-objdump -d /bin/ls | head -50
-
-# See the ELF sections
-readelf -S /bin/ls
-
-# Compare binary sizes
-ls -lh /bin/ls
-```
-
-An assembled program with no standard library might have only a `.text` section with a few dozen bytes. A compiled C program links in libc and has many sections, with the binary size starting in the kilobytes even for trivial programs.
-
----
-
-## The Bootstrap Problem — How Was GCC Itself Made?
-
-GCC is written in C. You need GCC to compile C. How was the first GCC ever produced?
-
-This is called the bootstrapping problem — one of the most philosophically interesting problems in computing.
-
-### The Historical Answer
-
-In the 1970s, the first C compiler was written in assembly language by hand. A human sat down and wrote assembly code — assembled it manually — to produce a program that could read C syntax and output machine code. Once that primitive C compiler existed, developers could use it to write a better C compiler in C. That new C compiler was then assembled/compiled using the old one. The new compiler could then compile itself. The assembly-written compiler was retired.
-
-```
-1970s: Human writes assembly C compiler by hand
-       Human assembles it manually into machine code
-         │
-         ↓
-First C compiler exists (written in assembly, assembled by hand)
-         │
-         ↓
-Developers write a better C compiler in C
-         │
-         ↓
-Use old assembly-based compiler to compile the new C compiler
-         │
-         ↓
-New C compiler can compile itself (self-hosting)
-         │
-         ↓
-Each new GCC version compiled by previous GCC version
-         │
-         ↓
-Modern GCC compiled by previous GCC
-         │
-         ↓
-GCC compiles Linux kernel → produces vmlinuz binary
-         │
-         ↓
-vmlinuz ships on your disk at installation time
-         │
-         ↓
-Your machine boots → GRUB loads vmlinuz directly
-         │
-GCC is never involved at runtime — it already did its job
-```
-
-GCC is like a printing press. The book (vmlinuz) was already printed and sitting on your shelf. When the central processing unit reads the book, the printing press is not involved. It did its job once during printing — years ago on a developer's machine.
-
-### Ken Thompson's Trusting Trust — The Security Implication
-
-In 1984, Ken Thompson, one of the creators of Unix, gave a famous lecture demonstrating a terrifying implication of the bootstrap chain. He showed it is possible to put a backdoor into a compiler that:
-
-- Injects malicious code into any program it compiles
-- Also injects itself into any new compiler it compiles
-- Leaves absolutely no trace in any source code anywhere
-- Persists even when you recompile from completely clean source code
-
-The backdoor lives in the compiler binary, not in any source file. Reading source code cannot detect it. Recompiling from clean source using the infected compiler simply produces another infected compiler binary — because the infection is in the tool doing the compiling, not the instructions being compiled.
-
-The only escape is to trace the entire compiler chain back to the original hand-written assembly and rebuild every step from scratch independently. This is why reproducible builds — the ability to independently verify that a published binary matches its claimed source code — matter enormously to security-conscious projects.
-
----
-
-## How Different Languages Get to the Central Processing Unit
-
-Languages take fundamentally different paths to execution, and this affects their performance, portability and how they behave at runtime.
-
-### Assembled Languages — Direct 1:1 to Machine Code
-
-Assembly is processed by an assembler with a near 1:1 substitution. The output is machine code that the central processing unit executes directly. Every instruction the central processing unit runs is an instruction you wrote.
-
-```
-Assembly source → Assembler (1:1 substitution) → Machine code → CPU executes directly
-
-Tool: nasm, gas, as
-Characteristic: Maximum control, maximum responsibility, minimum abstraction
-```
-
-### Compiled Languages — Translated to Machine Code
-
-C, Rust, Go and C++ are compiled — the compiler does heavy translation work, expanding and transforming your source into optimised machine code. The output is machine code that the central processing unit executes directly.
-
-```
-Source code → Compiler (heavy translation) → Machine code → CPU executes directly
-
-Tools: gcc, clang, rustc, go build
-Characteristic: Fastest execution, compiler makes optimisation decisions
-```
-
-### Interpreted Languages — A Middleman Reads Your Code at Runtime
-
-Python, Ruby and classic shell scripts are never translated to machine code at all. Instead, a separate program called an interpreter reads your source code at runtime and carries out the instructions itself. The interpreter is a compiled machine code binary. Your script rides inside it.
-
-```
-Source code → Interpreter reads and executes line by line at runtime
-                │
-                └── interpreter itself is a compiled binary running on the CPU
-
-Tools: python3, ruby, bash
-Characteristic: Slower (interpreter overhead each line), portable, no build step
-
-When you run: python3 myscript.py
-What actually happens:
-  python3 binary (machine code) starts
-  python3 reads myscript.py line by line
-  python3 carries out each line itself
-  myscript.py never becomes machine code — ever
-```
-
-### Bytecode Languages — A Middle Ground
-
-Java, Kotlin and C# compile to an intermediate bytecode format. Bytecode is not machine code — it is a simpler, lower-level representation than source but still not executable by the central processing unit directly. A virtual machine runs the bytecode. The virtual machine can also use Just-In-Time compilation — converting frequently executed bytecode to actual machine code at runtime for speed.
-
-```
-Source → Compiler → Bytecode → Virtual machine executes bytecode
-                                │
-                                └── JIT: hot bytecode compiled to machine code at runtime
-
-Tools: javac → java, kotlinc → kotlin, csc → dotnet
-Characteristic: Portable (same bytecode runs anywhere the VM exists),
-                near-native speed with JIT compilation
-```
-
-| Language | Process | Output | Who executes it | Speed |
-|---|---|---|---|---|
-| Assembly | Assembling | Machine code | CPU directly | Maximum |
-| C, Rust, Go | Compiling | Machine code | CPU directly | Maximum |
-| Java, Kotlin | Compiling | Bytecode | Java Virtual Machine (with JIT) | Near maximum |
-| Python, Ruby | None | Nothing | Interpreter binary (machine code) | Slower |
-| JavaScript | None at write time | Nothing | V8 / SpiderMonkey engine (JIT) | Fast with JIT |
-
----
-
-
----
-
--e 
----
-
--e 
----
-
-# Chapter 08: Storage — Hard Drives, Partitions and Filesystems
-
-The CPU executes code, but that code and data must live somewhere permanently. Storage is the foundation everything else builds on — the kernel itself lives on disk, the filesystem organises it, and the partition structure defines the boundaries. This chapter establishes how physical storage is divided, organised and accessed.
-
----
-
-
-Everything in Linux eventually lives on a storage device. Before you can store a single file, two completely separate things must exist: a partition and a filesystem. These are not the same thing, and understanding the difference is the foundation of everything else.
-
----
-
-## The Hard Drive — Raw Empty Space
-
-Your hard drive or solid state drive when it comes from the factory is nothing but raw space. It is a sequence of billions of tiny storage cells that can hold ones and zeros. There is no structure, no folders, no organisation — just empty capacity, like a giant warehouse with bare walls and no furniture.
-
-> **The warehouse analogy:** Your entire hard drive is a single enormous empty building. By itself it is useless because nothing is organised inside.
-
----
-
-## Partitioning — Putting Up Walls
-
-Partitioning is the act of dividing your hard drive into separate regions by writing boundary information at the beginning of the disk. These boundaries are called partitions. A partition is nothing more than a defined chunk of space — it says "from byte number X to byte number Y belongs to this region."
-
-The partition itself does not know or care what you store inside it. It is simply a boundary — walls in the warehouse.
-
-```
-┌─────────────────────────────────────────────────────┐
-│              YOUR HARD DRIVE (raw space)             │
-├──────────────┬────────────────┬────────────────────┤
-│  Partition 1 │  Partition 2   │    Partition 3      │
-│  (wall here) │   (wall here)  │    (wall here)      │
-└──────────────┴────────────────┴────────────────────┘
-
-Linux names these partitions:
-  /dev/sda     ← the whole drive
-  /dev/sda1    ← partition 1
-  /dev/sda2    ← partition 2
-  /dev/sda3    ← partition 3
-```
-
----
-
-## Primary, Extended and Logical Partitions — The Old System
-
-This distinction comes from a historical limitation called MBR, which stands for Master Boot Record. The MBR is a tiny 512-byte region at the very start of a disk that stores the partition table. Because it was so small, it could only describe four partitions. Those four partitions are called primary partitions.
-
-People quickly ran out of four partitions. The solution invented was the extended partition. You sacrifice one of your four primary partition slots and declare it an extended partition. The extended partition is like a hallway — it contains no data itself, but it holds its own internal partition table that can describe many more partitions. The partitions inside the extended partition are called logical partitions.
-
-```
-─── MBR Disk Layout ────────────────────────────────────
-
-Primary    /dev/sda1    → real room, holds data
-Primary    /dev/sda2    → real room, holds data
-Primary    /dev/sda3    → real room, holds data
-Extended   /dev/sda4    → hallway only, no data itself
-  Logical  /dev/sda5    → room off the hallway
-  Logical  /dev/sda6    → room off the hallway
-  Logical  /dev/sda7    → room off the hallway
-  Logical  /dev/sda8    → room off the hallway
-
-Note: Logical partitions always start numbering at 5,
-      even if you only have one or two primary partitions.
-```
-
-Logical partitions historically could not always be booted from directly, and the extended partition itself is never directly usable for data. This entire system exists only to work around the four-partition limit.
-
-### Why Logical Partitions Are Legacy Today
-
-Logical partitions solved one specific problem: escaping the four-partition limit on MBR disks. That is the only reason they exist. On modern GPT disks the problem does not exist, so logical partitions are irrelevant. You will encounter them when working on old servers or virtual machines set up years ago with MBR — seeing `/dev/sda5` and wondering why it skipped 1 through 4 is the tell.
-
----
-
-## The Modern System — GPT Partitioning
-
-Modern disks use a system called GPT, which stands for GUID Partition Table. GPT is written at the beginning of the disk and can describe up to 128 partitions. Every partition is equal — there is no concept of primary, extended or logical. The entire primary versus logical distinction is irrelevant on GPT disks.
-
-> If you run `sudo parted /dev/sda print | grep "Partition Table"` and see **gpt**, every partition on that disk is just a plain partition. No drama.
-
----
-
-## Filesystems — Furniture Inside the Room
-
-A partition is an empty room. It has walls but nothing inside. You cannot store files in an empty room because there is no system for organising them. A filesystem is the organisation system — the shelves, labels, logbooks and rules that let you create folders, name files, track who owns what, record when things were created and find things again later.
-
-Before a partition can hold files, you must format it — this installs a filesystem into the partition. This process is called making a filesystem or formatting.
-
-| Filesystem | Personality and Use Case |
-|---|---|
-| `ext4` | The reliable everyday default on most Linux systems. Stable, well understood, good performance for general use. |
-| `xfs` | Fast, particularly good for large files. Common on servers. Used in Red Hat Enterprise Linux by default. |
-| `btrfs` | Advanced features including snapshots, checksums, and self-healing. More complex but more capable. |
-| `vfat / FAT32` | Simple, understood by every operating system. Used on USB drives and the EFI boot partition. |
-| `swap` | Not really a filesystem at all. A special partition the kernel uses as overflow when physical memory is full. |
-| `tmpfs` | A filesystem that lives entirely in RAM. Fast but disappears on reboot. Used for temporary files. |
-
----
-
-## Mounting — Opening the Door
-
-Having a formatted partition is not enough. Linux must be told where in the directory tree this partition should appear. This act of attaching a partition to a location in the filesystem tree is called mounting.
-
-In Windows, each partition gets a letter: C drive, D drive, E drive. In Linux, there is a single unified tree starting at root, written as a forward slash. Every partition gets attached to a folder somewhere in that tree.
-
-```
-─── Linux Unified Filesystem Tree ─────────────────────
-
-/                         ← root (mandatory, always exists)
-├── boot/                 ← /dev/sda1 mounted here
-├── etc/                  ← part of root partition
-├── home/                 ← /dev/sda7 mounted here (343 GB)
-│     └── leokadia/       ← your personal folder
-├── tmp/                  ← /dev/sda6 mounted here (499 MB)
-├── var/                  ← /dev/sda5 mounted here (40 GB)
-└── usr/                  ← part of root partition
-```
-
-> **Critical insight:** The size of a partition has absolutely nothing to do with its position in the hierarchy. Your home partition can be 343 gigabytes and still be a child of root in the tree. Hierarchy means rank and structure. Size means physical storage. They are completely separate concepts.
-
-The kernel component that manages this unified view is called the Virtual Filesystem Switch. It acts like a building manager who knows which physical room is behind each door, regardless of what furniture system that room uses inside. The Virtual Filesystem Switch means your applications never need to care whether they are reading from ext4 or xfs — they just ask for a file path and the kernel handles the rest.
-
----
-
-## What Happens When You Mount Over an Occupied Directory
-
-If you mount a new partition on top of a directory that already has a partition mounted there, the original partition does not disappear — it gets hidden. The new partition covers it like boarding up a door and putting a new door in front of it. The original contents are completely unreachable while the new partition is mounted, but nothing is deleted. Unmounting reveals everything exactly as it was.
-
-```bash
-# What is currently on /home
-ls /home
-
-# Mount an external drive on top of /home
-sudo mount /dev/sdb1 /home
-
-# Now ls /home shows the external drive contents — original is hidden
-ls /home
-
-# Unmount — original 343 GB contents visible again
-sudo umount /home
-ls /home
-```
-
-This is why you should never mount over a directory that is actively in use. Running processes that have files open in the original partition will keep working on the original because the kernel holds their file references, but new processes will see the new mount. This split creates confusion. Safe disk operations should be done either in single-user mode or from a live session.
-
----
-
-## Live Session and Single-User Mode
-
-| | Normal Boot | Single-User Mode | Live Session |
-|---|---|---|---|
-| Who is in control | Your installed operating system | Your installed operating system (root only) | A different operating system on USB |
-| Home directory active? | Yes | Barely | No — completely cold |
-| Safe to work on disks? | No | Risky | Yes |
-| Internet and services? | Full | Minimal | Usually yes |
-| Use case | Daily work | Emergency repair, password reset | Forensics, recovery, installation |
-
-**Live session** — You boot an operating system from a USB drive. That USB operating system runs entirely from RAM and has no relationship to your internal disk. Your internal disk sits completely cold and untouched, making it safe to partition, format, repair or forensically examine without anything interfering with the data. This is exactly what was happening in your Kali screenshot — Kali booted from your Ventoy USB, so the internal Toshiba drive was cold and safe to partition freely.
-
-**Single-user mode** — Your installed operating system boots into a minimal state where only the root user is present, almost no services are running, and the home directory is barely active. It is like evacuating all tenants from a building so the maintenance crew can work safely.
-
-```bash
-# Enter single-user mode from a running system
-sudo systemctl rescue
-
-# Or at the GRUB menu, edit the boot entry and add to the kernel line:
-systemd.unit=rescue.target
-```
-
----
-
-## Seeing Partitions and Filesystems Live on Your Machine
-
-```bash
-# See all block devices and their partition structure
-lsblk
-
-# See partitions AND what filesystem is inside each one
-lsblk -f
-
-# Detailed partition table — sizes, types, start and end sectors
-sudo fdisk -l
-
-# See all currently mounted filesystems with sizes and usage
-df -hT
-
-# Check which partition table type a disk uses (gpt or msdos/MBR)
-sudo parted /dev/sda print | grep "Partition Table"
-```
-
-Running `lsblk -f` shows both layers at once — the partition device name on the left, the filesystem type next to it. That is the warehouse and furniture visible together in one command.
-
----
-
-## LVM — Logical Volume Manager
-
-Your Kali installer screenshot showed two entries at the top that looked different from regular partitions:
-
-```
-LVM VG sdb1, LV sdb1 - 62.9 GB Linux device-mapper (linear)
-LVM VG ventoy, LV ventoy - 4.7 GB Linux device-mapper (linear)
-```
-
-These are LVM volumes — a completely different layer that sits on top of regular partitions.
-
-Regular partitions have fixed sizes tied to physical disk boundaries. Once you create a 100 gigabyte partition, resizing it requires dangerous operations that risk data loss. LVM solves this by adding a virtualisation layer between physical disks and the filesystems that use them.
-
-```
-─── Without LVM ──────────────────────────────────────────
-
-Physical disk → Partition → Filesystem
-  Fixed size     Fixed      Lives in fixed space
-                 size       Cannot grow easily
-
-─── With LVM ─────────────────────────────────────────────
-
-Physical disk(s) → Physical Volumes
-                          ↓
-                   Volume Group (pool of all space)
-                          ↓
-               Logical Volumes (flexible, resizable)
-                          ↓
-                      Filesystem
-```
-
-The key concepts:
-
-**Physical Volume** — a real partition or whole disk handed to LVM. You run `pvcreate /dev/sda2` to make a partition into a physical volume.
-
-**Volume Group** — LVM pools one or more physical volumes into a single group of available space. You can add more physical volumes to the group later and the total available space grows.
-
-**Logical Volume** — a slice of the volume group that looks like a regular partition to the filesystem. You can resize logical volumes up or down without touching physical disk boundaries, and you can span a logical volume across multiple physical disks.
-
-```bash
-# See physical volumes
-sudo pvdisplay
-
-# See volume groups
-sudo vgdisplay
-
-# See logical volumes
-sudo lvdisplay
-
-# Extend a logical volume by 20 gigabytes
-sudo lvextend -L +20G /dev/vg_name/lv_name
-
-# Then resize the filesystem to fill the new space
-sudo resize2fs /dev/vg_name/lv_name
-```
-
-LVM is common on servers precisely because disks fill up unpredictably and being able to add a new disk and extend a volume without downtime is valuable. It is also how many Linux installers set up the system by default when you choose guided partitioning.
-
----
-
-## Real World Example — The Kali Installer Partition Screen
-
-The partition screen showed a Toshiba 500 gigabyte drive with a classic MBR layout using logical partitions:
-
-| Device | Type | Size | Filesystem | Mount Point |
-|---|---|---|---|---|
-| `/dev/sda1` | Primary | 100 GB | ext4 | / |
-| `/dev/sda4` | Extended | (rest) | none | (hallway, hidden by installer) |
-| `/dev/sda5` | Logical | 40 GB | ext4 | /var |
-| `/dev/sda6` | Logical | 499 MB | ext4 | /tmp |
-| `/dev/sda7` | Logical | 343 GB | ext4 | /home |
-| `/dev/sda8` | Logical | 16 GB | swap | swap |
-
-Notice that partition numbers 2 and 3 are missing from the visible list. One of those hidden slots is the extended partition — the installer hides it because it holds no data and you never interact with it directly. The logical partitions start at 5 as the rules require.
-
-The root partition at `/dev/sda1` had to be primary because older BIOS firmware could only boot from a primary partition. All the data partitions were made logical to stay within the four-slot MBR limit.
-
-The entire Kali installer ran from the Ventoy USB drive (shown as sdb), which is why it could freely partition sda — sda was completely cold during the installation. That is the live session principle in action.
-
----
-
-
----
-
--e 
----
-
--e 
----
-
-# Chapter 09: The Kernel Interface — Everything is a File, Inodes and System Calls
+# Chapter 13: Everything is a File — Inodes, VFS and System Calls
 
 We now have a CPU that executes code, storage that holds data, and a philosophy about how an operating system should work. This chapter is where those three threads meet. The kernel provides one unified interface to every resource on the system — files, devices, network connections, processes. Understanding that interface is the key to understanding everything that runs on Linux.
 
@@ -6235,7 +7706,302 @@ If you can restrict a process's system calls, you limit what damage it can do ev
 -e 
 ---
 
-# Chapter 10: File Descriptors — The Unified Handle for Everything
+-e 
+---
+
+-e 
+---
+
+## Part VI — The Runtime
+
+*Chapters 14-17 cover what happens when programs actually run. Storage organises data persistently. File descriptors connect everything. Processes are created via fork and exec. The boot chain brings the entire system to life.*
+
+# Chapter 14: Storage — Partitions, Filesystems and LVM
+
+The CPU executes code, but that code and data must live somewhere permanently. Storage is the foundation everything else builds on — the kernel itself lives on disk, the filesystem organises it, and the partition structure defines the boundaries. This chapter establishes how physical storage is divided, organised and accessed.
+
+---
+
+
+Everything in Linux eventually lives on a storage device. Before you can store a single file, two completely separate things must exist: a partition and a filesystem. These are not the same thing, and understanding the difference is the foundation of everything else.
+
+---
+
+## The Hard Drive — Raw Empty Space
+
+Your hard drive or solid state drive when it comes from the factory is nothing but raw space. It is a sequence of billions of tiny storage cells that can hold ones and zeros. There is no structure, no folders, no organisation — just empty capacity, like a giant warehouse with bare walls and no furniture.
+
+> **The warehouse analogy:** Your entire hard drive is a single enormous empty building. By itself it is useless because nothing is organised inside.
+
+---
+
+## Partitioning — Putting Up Walls
+
+Partitioning is the act of dividing your hard drive into separate regions by writing boundary information at the beginning of the disk. These boundaries are called partitions. A partition is nothing more than a defined chunk of space — it says "from byte number X to byte number Y belongs to this region."
+
+The partition itself does not know or care what you store inside it. It is simply a boundary — walls in the warehouse.
+
+```
+┌─────────────────────────────────────────────────────┐
+│              YOUR HARD DRIVE (raw space)             │
+├──────────────┬────────────────┬────────────────────┤
+│  Partition 1 │  Partition 2   │    Partition 3      │
+│  (wall here) │   (wall here)  │    (wall here)      │
+└──────────────┴────────────────┴────────────────────┘
+
+Linux names these partitions:
+  /dev/sda     ← the whole drive
+  /dev/sda1    ← partition 1
+  /dev/sda2    ← partition 2
+  /dev/sda3    ← partition 3
+```
+
+---
+
+## Primary, Extended and Logical Partitions — The Old System
+
+This distinction comes from a historical limitation called MBR, which stands for Master Boot Record. The MBR is a tiny 512-byte region at the very start of a disk that stores the partition table. Because it was so small, it could only describe four partitions. Those four partitions are called primary partitions.
+
+People quickly ran out of four partitions. The solution invented was the extended partition. You sacrifice one of your four primary partition slots and declare it an extended partition. The extended partition is like a hallway — it contains no data itself, but it holds its own internal partition table that can describe many more partitions. The partitions inside the extended partition are called logical partitions.
+
+```
+─── MBR Disk Layout ────────────────────────────────────
+
+Primary    /dev/sda1    → real room, holds data
+Primary    /dev/sda2    → real room, holds data
+Primary    /dev/sda3    → real room, holds data
+Extended   /dev/sda4    → hallway only, no data itself
+  Logical  /dev/sda5    → room off the hallway
+  Logical  /dev/sda6    → room off the hallway
+  Logical  /dev/sda7    → room off the hallway
+  Logical  /dev/sda8    → room off the hallway
+
+Note: Logical partitions always start numbering at 5,
+      even if you only have one or two primary partitions.
+```
+
+Logical partitions historically could not always be booted from directly, and the extended partition itself is never directly usable for data. This entire system exists only to work around the four-partition limit.
+
+### Why Logical Partitions Are Legacy Today
+
+Logical partitions solved one specific problem: escaping the four-partition limit on MBR disks. That is the only reason they exist. On modern GPT disks the problem does not exist, so logical partitions are irrelevant. You will encounter them when working on old servers or virtual machines set up years ago with MBR — seeing `/dev/sda5` and wondering why it skipped 1 through 4 is the tell.
+
+---
+
+## The Modern System — GPT Partitioning
+
+Modern disks use a system called GPT, which stands for GUID Partition Table. GPT is written at the beginning of the disk and can describe up to 128 partitions. Every partition is equal — there is no concept of primary, extended or logical. The entire primary versus logical distinction is irrelevant on GPT disks.
+
+> If you run `sudo parted /dev/sda print | grep "Partition Table"` and see **gpt**, every partition on that disk is just a plain partition. No drama.
+
+---
+
+## Filesystems — Furniture Inside the Room
+
+A partition is an empty room. It has walls but nothing inside. You cannot store files in an empty room because there is no system for organising them. A filesystem is the organisation system — the shelves, labels, logbooks and rules that let you create folders, name files, track who owns what, record when things were created and find things again later.
+
+Before a partition can hold files, you must format it — this installs a filesystem into the partition. This process is called making a filesystem or formatting.
+
+| Filesystem | Personality and Use Case |
+|---|---|
+| `ext4` | The reliable everyday default on most Linux systems. Stable, well understood, good performance for general use. |
+| `xfs` | Fast, particularly good for large files. Common on servers. Used in Red Hat Enterprise Linux by default. |
+| `btrfs` | Advanced features including snapshots, checksums, and self-healing. More complex but more capable. |
+| `vfat / FAT32` | Simple, understood by every operating system. Used on USB drives and the EFI boot partition. |
+| `swap` | Not really a filesystem at all. A special partition the kernel uses as overflow when physical memory is full. |
+| `tmpfs` | A filesystem that lives entirely in RAM. Fast but disappears on reboot. Used for temporary files. |
+
+---
+
+## Mounting — Opening the Door
+
+Having a formatted partition is not enough. Linux must be told where in the directory tree this partition should appear. This act of attaching a partition to a location in the filesystem tree is called mounting.
+
+In Windows, each partition gets a letter: C drive, D drive, E drive. In Linux, there is a single unified tree starting at root, written as a forward slash. Every partition gets attached to a folder somewhere in that tree.
+
+```
+─── Linux Unified Filesystem Tree ─────────────────────
+
+/                         ← root (mandatory, always exists)
+├── boot/                 ← /dev/sda1 mounted here
+├── etc/                  ← part of root partition
+├── home/                 ← /dev/sda7 mounted here (343 GB)
+│     └── leokadia/       ← your personal folder
+├── tmp/                  ← /dev/sda6 mounted here (499 MB)
+├── var/                  ← /dev/sda5 mounted here (40 GB)
+└── usr/                  ← part of root partition
+```
+
+> **Critical insight:** The size of a partition has absolutely nothing to do with its position in the hierarchy. Your home partition can be 343 gigabytes and still be a child of root in the tree. Hierarchy means rank and structure. Size means physical storage. They are completely separate concepts.
+
+The kernel component that manages this unified view is called the Virtual Filesystem Switch. It acts like a building manager who knows which physical room is behind each door, regardless of what furniture system that room uses inside. The Virtual Filesystem Switch means your applications never need to care whether they are reading from ext4 or xfs — they just ask for a file path and the kernel handles the rest.
+
+---
+
+## What Happens When You Mount Over an Occupied Directory
+
+If you mount a new partition on top of a directory that already has a partition mounted there, the original partition does not disappear — it gets hidden. The new partition covers it like boarding up a door and putting a new door in front of it. The original contents are completely unreachable while the new partition is mounted, but nothing is deleted. Unmounting reveals everything exactly as it was.
+
+```bash
+# What is currently on /home
+ls /home
+
+# Mount an external drive on top of /home
+sudo mount /dev/sdb1 /home
+
+# Now ls /home shows the external drive contents — original is hidden
+ls /home
+
+# Unmount — original 343 GB contents visible again
+sudo umount /home
+ls /home
+```
+
+This is why you should never mount over a directory that is actively in use. Running processes that have files open in the original partition will keep working on the original because the kernel holds their file references, but new processes will see the new mount. This split creates confusion. Safe disk operations should be done either in single-user mode or from a live session.
+
+---
+
+## Live Session and Single-User Mode
+
+| | Normal Boot | Single-User Mode | Live Session |
+|---|---|---|---|
+| Who is in control | Your installed operating system | Your installed operating system (root only) | A different operating system on USB |
+| Home directory active? | Yes | Barely | No — completely cold |
+| Safe to work on disks? | No | Risky | Yes |
+| Internet and services? | Full | Minimal | Usually yes |
+| Use case | Daily work | Emergency repair, password reset | Forensics, recovery, installation |
+
+**Live session** — You boot an operating system from a USB drive. That USB operating system runs entirely from RAM and has no relationship to your internal disk. Your internal disk sits completely cold and untouched, making it safe to partition, format, repair or forensically examine without anything interfering with the data. This is exactly what was happening in your Kali screenshot — Kali booted from your Ventoy USB, so the internal Toshiba drive was cold and safe to partition freely.
+
+**Single-user mode** — Your installed operating system boots into a minimal state where only the root user is present, almost no services are running, and the home directory is barely active. It is like evacuating all tenants from a building so the maintenance crew can work safely.
+
+```bash
+# Enter single-user mode from a running system
+sudo systemctl rescue
+
+# Or at the GRUB menu, edit the boot entry and add to the kernel line:
+systemd.unit=rescue.target
+```
+
+---
+
+## Seeing Partitions and Filesystems Live on Your Machine
+
+```bash
+# See all block devices and their partition structure
+lsblk
+
+# See partitions AND what filesystem is inside each one
+lsblk -f
+
+# Detailed partition table — sizes, types, start and end sectors
+sudo fdisk -l
+
+# See all currently mounted filesystems with sizes and usage
+df -hT
+
+# Check which partition table type a disk uses (gpt or msdos/MBR)
+sudo parted /dev/sda print | grep "Partition Table"
+```
+
+Running `lsblk -f` shows both layers at once — the partition device name on the left, the filesystem type next to it. That is the warehouse and furniture visible together in one command.
+
+---
+
+## LVM — Logical Volume Manager
+
+Your Kali installer screenshot showed two entries at the top that looked different from regular partitions:
+
+```
+LVM VG sdb1, LV sdb1 - 62.9 GB Linux device-mapper (linear)
+LVM VG ventoy, LV ventoy - 4.7 GB Linux device-mapper (linear)
+```
+
+These are LVM volumes — a completely different layer that sits on top of regular partitions.
+
+Regular partitions have fixed sizes tied to physical disk boundaries. Once you create a 100 gigabyte partition, resizing it requires dangerous operations that risk data loss. LVM solves this by adding a virtualisation layer between physical disks and the filesystems that use them.
+
+```
+─── Without LVM ──────────────────────────────────────────
+
+Physical disk → Partition → Filesystem
+  Fixed size     Fixed      Lives in fixed space
+                 size       Cannot grow easily
+
+─── With LVM ─────────────────────────────────────────────
+
+Physical disk(s) → Physical Volumes
+                          ↓
+                   Volume Group (pool of all space)
+                          ↓
+               Logical Volumes (flexible, resizable)
+                          ↓
+                      Filesystem
+```
+
+The key concepts:
+
+**Physical Volume** — a real partition or whole disk handed to LVM. You run `pvcreate /dev/sda2` to make a partition into a physical volume.
+
+**Volume Group** — LVM pools one or more physical volumes into a single group of available space. You can add more physical volumes to the group later and the total available space grows.
+
+**Logical Volume** — a slice of the volume group that looks like a regular partition to the filesystem. You can resize logical volumes up or down without touching physical disk boundaries, and you can span a logical volume across multiple physical disks.
+
+```bash
+# See physical volumes
+sudo pvdisplay
+
+# See volume groups
+sudo vgdisplay
+
+# See logical volumes
+sudo lvdisplay
+
+# Extend a logical volume by 20 gigabytes
+sudo lvextend -L +20G /dev/vg_name/lv_name
+
+# Then resize the filesystem to fill the new space
+sudo resize2fs /dev/vg_name/lv_name
+```
+
+LVM is common on servers precisely because disks fill up unpredictably and being able to add a new disk and extend a volume without downtime is valuable. It is also how many Linux installers set up the system by default when you choose guided partitioning.
+
+---
+
+## Real World Example — The Kali Installer Partition Screen
+
+The partition screen showed a Toshiba 500 gigabyte drive with a classic MBR layout using logical partitions:
+
+| Device | Type | Size | Filesystem | Mount Point |
+|---|---|---|---|---|
+| `/dev/sda1` | Primary | 100 GB | ext4 | / |
+| `/dev/sda4` | Extended | (rest) | none | (hallway, hidden by installer) |
+| `/dev/sda5` | Logical | 40 GB | ext4 | /var |
+| `/dev/sda6` | Logical | 499 MB | ext4 | /tmp |
+| `/dev/sda7` | Logical | 343 GB | ext4 | /home |
+| `/dev/sda8` | Logical | 16 GB | swap | swap |
+
+Notice that partition numbers 2 and 3 are missing from the visible list. One of those hidden slots is the extended partition — the installer hides it because it holds no data and you never interact with it directly. The logical partitions start at 5 as the rules require.
+
+The root partition at `/dev/sda1` had to be primary because older BIOS firmware could only boot from a primary partition. All the data partitions were made logical to stay within the four-slot MBR limit.
+
+The entire Kali installer ran from the Ventoy USB drive (shown as sdb), which is why it could freely partition sda — sda was completely cold during the installation. That is the live session principle in action.
+
+---
+
+
+---
+
+-e 
+---
+
+-e 
+---
+
+-e 
+---
+
+# Chapter 15: File Descriptors — The Unified Handle for Everything
 
 System calls return file descriptors. Everything the kernel manages — files, sockets, pipes, devices, timers — is accessed through a file descriptor once opened. This small integer is the practical implementation of "everything is a file." Understanding file descriptors explains how shell redirection works, how pipes connect programs, and how sockets and network connections fit into the same model.
 
@@ -6350,7 +8116,10 @@ ls process:                  grep process:
 -e 
 ---
 
-# Chapter 11: The Process Model — Fork, Exec and the Process Tree
+-e 
+---
+
+# Chapter 16: The Process Model — Fork, Exec and the Process Tree
 
 We have a kernel interface and a file descriptor system. Now we need to understand how programs actually run — how they start, how they create other programs, and how the entire tree of running processes on your system came to exist. Fork and exec are the two system calls that make all of this happen. Every process on your machine — from systemd down to your shell — exists because of these two calls.
 
@@ -6619,7 +8388,10 @@ The entire Unix pipeline mechanism — arbitrary chains of programs communicatin
 -e 
 ---
 
-# Chapter 12: The Boot Chain — Power On to Login
+-e 
+---
+
+# Chapter 17: The Boot Chain — Power On to Login
 
 We now have all the building blocks: the Von Neumann CPU, machine code, storage, the kernel interface, file descriptors, fork and exec. The boot chain is where all of these come together in sequence. Starting from the moment electricity hits the CPU, this chapter traces every step until your shell prompt appears — and every step now makes sense because you understand what it is building toward.
 
@@ -6814,7 +8586,17 @@ Above it, Linux is the same code on everything.
 -e 
 ---
 
-# Chapter 13: Networking — Sockets, TCP and the BSD API
+-e 
+---
+
+-e 
+---
+
+## Part VII — Networking and Communication
+
+*Chapters 18-19 cover how programs communicate across machines. Sockets are file descriptors over a network. Reverse shells are socket redirection applied to shells.*
+
+# Chapter 19: Networking — Sockets, TCP, BSD API and Reverse Shells
 
 Processes communicate with each other through file descriptors and pipes. Processes communicate across a network through sockets. A socket is a file descriptor — everything you learned about file descriptors applies. The socket API was designed at Berkeley in 1983 and has not changed since. Every networked program ever written in C, Python, Go, Java or any other language uses this same API underneath.
 
@@ -7048,7 +8830,17 @@ The advantage over TCP: no network stack overhead, no IP headers, no TCP handsha
 
 ---
 
-# Chapter 14: Network Defence — DDoS Protection and the Attack Surface
+-e 
+---
+
+-e 
+---
+
+## Part VIII — Security
+
+*Chapters 20-22 apply everything learned. Network defence uses knowledge of sockets and TCP. Sandboxing uses namespaces, rings and file descriptors. Memory vulnerabilities exploit the Von Neumann memory model, the stack, and the CPU's trust in return addresses.*
+
+# Chapter 20: Network Defence — DDoS Protection and the Attack Surface
 
 Now that you understand sockets and how servers accept connections, you can understand what a Distributed Denial of Service attack is actually doing — and more importantly, where to stop it. Every defence technique in this chapter maps directly to the networking concepts in the previous chapter.
 
@@ -7245,7 +9037,10 @@ findtime = 600    # failures counted within ten minutes
 -e 
 ---
 
-# Chapter 15: Service Sandboxing — Isolating Services from the OS
+-e 
+---
+
+# Chapter 21: Service Sandboxing — Isolating Services from the OS
 
 A server that handles network connections runs multiple services. Each service is a process with file descriptors, system calls and access to the filesystem. Sandboxing is the practice of restricting what a process can see and do — using the exact kernel mechanisms you now understand: namespaces that isolate the filesystem and network views, system call filters that restrict what the kernel allows, and file descriptor control that limits what resources a service can access.
 
@@ -7465,7 +9260,10 @@ sudo apparmor_parser -r /etc/apparmor.d/usr.bin.payment-api
 -e 
 ---
 
-# Chapter 16: Memory Vulnerabilities — Buffer Overflows and Beyond
+-e 
+---
+
+# Chapter 22: Memory Vulnerabilities — Buffer Overflows and Beyond
 
 This is where everything comes together from the offensive side. Memory vulnerabilities exist because programs run in the Von Neumann memory model you learned in Chapter 2, are written in C compiled to machine code from Chapter 3, run as processes created by fork and exec from Chapter 7, and make system calls through the kernel interface from Chapter 5. The return address on the stack is the address the CPU will fetch-decode-execute next — which you understand from Chapter 2. Every concept in this chapter is a direct consequence of everything that came before it.
 
@@ -8353,7 +10151,17 @@ strace -e trace=clone,execve bash
 -e 
 ---
 
-# Chapter 17: Mobile Architecture — From Battery to Baseband
+-e 
+---
+
+-e 
+---
+
+## Part IX — Mobile
+
+*Chapter 23 applies every concept from Parts I-VIII to mobile devices. The same transistors, instruction sets, rings, kernels, file descriptors, and networking — engineered under the constraint of a battery.*
+
+# Chapter 23: Mobile Architecture — From Battery to Baseband
 
 Every concept in this document applies to mobile devices. The same transistors, the same logic gates, the same instruction sets, the same Von Neumann fetch-decode-execute cycle. But mobile adds one constraint that changes every engineering decision: the device must run on a small battery for hours or days. This single requirement reshapes the entire hardware and software stack from the silicon up.
 
@@ -10085,3 +11893,11 @@ adb shell ls /dev/qseecom  # Qualcomm TEE interface
 
 *End of Masterclass Reference — Version 5.*
 *The complete computing journey: from electrons and silicon to mobile architecture and modern exploitation.*
+-e 
+---
+
+
+---
+
+*End of Masterclass — Version 6.*
+*Built from electrons to exploitation, structured from physical foundation to advanced security.*
