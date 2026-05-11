@@ -36,2965 +36,56 @@ This document builds knowledge in strict order. Each part depends on the one bef
 2. [From Gates to a Working CPU](#chapter-02)
 3. [Memory — RAM, Cache, Addresses and the Memory Hierarchy](#chapter-03)
 
-### Part II — The Instruction Bridge
-4. [The Instruction Set — Opcodes, Decoders and ISA](#chapter-04)
-5. [Virtual Memory — Pages, Page Tables, MMU and Page Faults](#chapter-05)
+## Chapter 4: The Instruction Set — Opcodes, Decoders, Architecture and Execution
 
-### Part III — The Software Foundation
-6. [How Code Becomes Machine Code — Assembly, C and Compilers](#chapter-06)
-7. [The Complete Flow — From Transistor to Running Program](#chapter-07)
-
-### Part IV — The Operating System
-8. [The Kernel and the OS — What They Are and Where They Live](#chapter-08)
-9. [Protection Rings — Hardware-Enforced Privilege](#chapter-09)
-10. [System Calls and Function Calls — The Precise Difference](#chapter-10)
-
-### Part V — The Unix Philosophy
-11. [History and Philosophy — ASR-33, Unix, C, BSD and Linux](#chapter-11)
-12. [Terminal, Shell and Prompt — The Complete Distinction](#chapter-12)
-13. [Everything is a File — Inodes, VFS, System Calls](#chapter-13)
-
-### Part VI — The Runtime
-14. [Storage — Partitions, Filesystems and LVM](#chapter-14)
-15. [File Descriptors — The Unified Handle for Everything](#chapter-15)
-16. [The Process Model — Fork, Exec and the Process Tree](#chapter-16)
-17. [The Boot Chain — Power On to Login](#chapter-17)
-
-### Part VII — Networking and Communication
-18. [Automata Theory, Formal Languages and Regular Expressions](#chapter-18)
-19. [Networking — Sockets, TCP, BSD API and Reverse Shells](#chapter-19)
-
-### Part VIII — Security
-20. [Network Defence — DDoS Protection and the Attack Surface](#chapter-20)
-21. [Service Sandboxing — Isolating Services from the OS](#chapter-21)
-22. [Memory Vulnerabilities — Buffer Overflows and Beyond](#chapter-22)
-
-### Part IX — Mobile
-23. [Mobile Architecture — From Battery to Baseband](#chapter-23)
+This is the bridge chapter between hardware (Chapters 1-3) and software (Chapters 6 onward). It covers everything about how the CPU's instruction set works: what an opcode is, how the decoder is built from gates, how x86-64/ARM64/RISC-V encode instructions differently, how the CPU executes out of order, how programs become binaries, and how the first assembler was built. All ISA-related content is in one place.
 
 ---
 
--e 
----
-
-## Part I — The Physical Foundation
-
-*Chapters 1-3 cover what computers are made of at the hardware level. No software yet. Pure physics, circuits and silicon. Every concept in later chapters traces back to this foundation.*
-
-# Chapter 1: From Electrons to Logic Gates
-
-Before a single line of code, before binary numbers, before any instruction set — there is physics. Every computation that has ever happened on any computer anywhere in the world ultimately reduces to electrons flowing or not flowing through physical material. Understanding this foundation makes everything else in this document not just comprehensible but inevitable. The complexity of a modern operating system is not magic — it is an enormous number of extremely simple physical switches, arranged very cleverly.
-
----
-
-## Electricity and the Bit
-
-A computer works with electricity because electricity has a property that maps perfectly to the simplest possible number system: it is either flowing or it is not. On or off. High voltage or low voltage. This maps to 1 or 0. One binary digit — one **bit**.
-
-Everything a computer has ever done — every calculation, every pixel on your screen, every byte of every file, every network packet ever sent — is the result of manipulating bits. Numbers, text, images, sound, video, programs — all of it is bits. The entire edifice of modern computing rests on this single physical fact: electricity is either flowing or it is not.
+## What This Chapter Covers
 
 ```
-High voltage (~5V or ~3.3V or ~1.8V depending on era):  = 1
-Low voltage  (~0V):                                      = 0
+PART A — The ISA Specification and Decoder
+  What an ISA is, what an opcode is
+  How the decoder is built from AND gates
+  The 8080/Z80 architecture (the worked example)
+  CPU bit width vs opcode width (the critical distinction)
+  x86-64, ARM64, RISC-V instruction encoding in detail
 
-One wire carrying one voltage level = one bit
-Eight wires = eight bits = one byte
-64 wires side by side = 64 bits = one 64-bit value
+PART B — The CPU Execution Pipeline
+  Front-end: fetch, decode, dispatch
+  Back-end: ALU, FPU, SIMD, registers
+  Out-of-order execution and the reorder buffer
+  Register renaming
+  Speculative execution, branch prediction
+  Spectre and Meltdown
+
+PART C — The ISA and Software
+  Algorithms vs primitive ISA instructions
+  The kernel uses the same decoder as everything else
+  How the bootstrap happened (first assembler to GCC)
+  x86 naming history
+  Von Neumann was not alone
+
+PART D — Binaries, Linking and Shared Libraries
+  ELF format in detail
+  Static vs dynamic linking
+  PLT and GOT — how shared library calls work
+  Atomic operations and memory barriers
+  CPUID — querying CPU capabilities
+  Compiler intermediate representation
+  The dynamic linker at runtime
+
+PART E — How x86-64 Grew to Variable Length
+  The 1978 foundation
+  Seven layers of prefixes
+  ModRM and SIB bytes decoded
+  A complete C function decoded byte by byte
 ```
 
 ---
 
-## Transistors — The Switch That Made Everything Possible
-
-Before transistors, computers used vacuum tubes — glass bulbs the size of your thumb that controlled electron flow by heating a filament. They worked, but they consumed enormous power, generated enormous heat, failed constantly (early computers had thousands of them), and were physically large.
-
-In 1947, Bell Labs invented the **transistor** — a solid-state switch made from semiconductor material (initially germanium, later silicon). A transistor has three connections:
-
-- **Collector** — where current enters
-- **Emitter** — where current exits
-- **Base** — the control signal
-
-When a small voltage is applied to the base, the transistor allows current to flow from collector to emitter. When no voltage is at the base, no current flows. It is a switch — controlled electrically with no moving parts.
-
-```
-Transistor as a switch:
-
-Base voltage = 0V:          Base voltage = voltage:
-  Collector                   Collector
-     |                           |
-     |   [transistor]            |   [transistor]
-     |   switch OPEN             |   switch CLOSED
-     |                           |
-  Emitter                     Emitter
-  (no current flows)          (current flows through)
-
-= bit 0                     = bit 1
-```
-
-This was the revolution. A transistor is:
-- Microscopic — modern transistors are 3-5 nanometres wide (a strand of DNA is 2.5nm)
-- Fast — can switch billions of times per second
-- Reliable — no filament to burn out
-- Low power — generates far less heat than a vacuum tube
-- Cheap to manufacture — billions fit on a fingernail-sized chip
-
-A modern CPU has **billions of transistors**. Apple's M2 chip has 20 billion. AMD's EPYC server chip has over 100 billion. Each one is a switch. The entire complexity of modern computing is the arrangement of those switches.
-
----
-
-## Logic Gates — Combining Transistors to Make Decisions
-
-A single transistor is just a switch. Useful, but limited. When you combine two or more transistors in specific arrangements, you get **logic gates** — circuits that take binary inputs and produce a binary output according to a rule.
-
-There are seven fundamental gate types. Everything a computer does is built from these seven operations.
-
-### NOT Gate (Inverter)
-
-One input, one output. Output is always the opposite of input.
-
-```
-Input | Output
-  0   |   1
-  1   |   0
-
-Symbol: A ----[NOT]---- Q
-
-If A is 0, Q is 1.
-If A is 1, Q is 0.
-
-Built from: one transistor wired so it pulls output low when input is high
-```
-
-### AND Gate
-
-Two inputs, one output. Output is 1 only if BOTH inputs are 1.
-
-```
-Input A | Input B | Output
-   0    |    0    |   0
-   0    |    1    |   0
-   1    |    0    |   0
-   1    |    1    |   1      <- only this row gives 1
-
-Symbol: A --\
-             [AND]---- Q
-        B --/
-
-Built from: two transistors in series — both must conduct for current to flow
-```
-
-### OR Gate
-
-Two inputs, one output. Output is 1 if ANY input is 1.
-
-```
-Input A | Input B | Output
-   0    |    0    |   0
-   0    |    1    |   1
-   1    |    0    |   1
-   1    |    1    |   1
-
-Symbol: A --\
-             [OR]---- Q
-        B --/
-
-Built from: two transistors in parallel — either can conduct
-```
-
-### NAND Gate (NOT AND)
-
-AND followed by NOT. Output is 0 only when BOTH inputs are 1. This is the most important gate in practice — every other gate can be built from NAND gates alone.
-
-```
-Input A | Input B | Output
-   0    |    0    |   1
-   0    |    1    |   1
-   1    |    0    |   1
-   1    |    1    |   0      <- only this row gives 0
-```
-
-### NOR Gate (NOT OR)
-
-OR followed by NOT.
-
-```
-Input A | Input B | Output
-   0    |    0    |   1      <- only this row gives 1
-   0    |    1    |   0
-   1    |    0    |   0
-   1    |    1    |   0
-```
-
-### XOR Gate (Exclusive OR)
-
-Output is 1 if inputs are DIFFERENT. Output is 0 if inputs are the SAME.
-
-```
-Input A | Input B | Output
-   0    |    0    |   0      <- same, output 0
-   0    |    1    |   1      <- different, output 1
-   1    |    0    |   1      <- different, output 1
-   1    |    1    |   0      <- same, output 0
-
-Critical use: binary addition
-  0 + 0 = 0  (XOR gives 0, no carry)
-  0 + 1 = 1  (XOR gives 1, no carry)
-  1 + 0 = 1  (XOR gives 1, no carry)
-  1 + 1 = 0  (XOR gives 0, carry 1)  <- this is exactly binary addition
-```
-
-### XNOR Gate (Exclusive NOR)
-
-Output is 1 if inputs are the SAME.
-
-```
-Input A | Input B | Output
-   0    |    0    |   1
-   0    |    1    |   0
-   1    |    0    |   0
-   1    |    1    |   1
-```
-
----
-
-## Building Useful Circuits From Gates
-
-Individual gates make decisions. Combining gates makes circuits that compute.
-
-### The Half Adder — Adding Two Bits
-
-To add two single bits together, you need two outputs: the sum and the carry (overflow into the next column).
-
-```
-0 + 0 = 0, carry 0
-0 + 1 = 1, carry 0
-1 + 0 = 1, carry 0
-1 + 1 = 0, carry 1   <- sum is 0, but carry 1 to next column
-
-Sum   = XOR(A, B)     <- XOR gives 0 when both are 1 (which is when sum overflows)
-Carry = AND(A, B)     <- AND gives 1 only when both are 1 (which is when we carry)
-
-Circuit:
-        A --+---[XOR]---- Sum
-            |
-        B --+---[AND]---- Carry
-
-Two gates. Two transistors each. Four transistors total.
-This circuit adds two bits. That is all arithmetic is — repeated application of this.
-```
-
-### The Full Adder — Adding Three Bits
-
-Real addition needs to handle a carry coming in from the previous column. The full adder adds three bits: A, B, and carry-in, producing sum and carry-out.
-
-```
-Full adder = two half adders + one OR gate
-
-A ---[Half Adder 1]--- intermediate sum ---[Half Adder 2]--- Sum
-B ---/                                  /
-Cin -----------------------------------|                Carry-out
-                                        OR gate combines both carries
-```
-
-### Ripple Carry Adder — Adding Multi-Bit Numbers
-
-Chain eight full adders together and you can add two 8-bit numbers. The carry-out of each adder feeds into the carry-in of the next — rippling through.
-
-```
-Bit 0:   A0, B0, Cin=0  --[Full Adder]--> S0, Cout0
-Bit 1:   A1, B1, Cin=Cout0 --[Full Adder]--> S1, Cout1
-Bit 2:   A2, B2, Cin=Cout1 --[Full Adder]--> S2, Cout2
-...
-Bit 7:   A7, B7, Cin=Cout6 --[Full Adder]--> S7, Cout7 (overflow)
-
-Eight full adders.
-Takes two 8-bit numbers, produces one 8-bit result.
-This is integer addition in hardware.
-```
-
----
-
-## The Arithmetic Logic Unit — The Calculator Inside the CPU
-
-The CPU contains a component called the **Arithmetic Logic Unit** (ALU). It takes two numbers and an operation code as input, and produces the result. Every arithmetic and logical operation the CPU can perform happens inside the ALU.
-
-```
-              +------------------+
-  Input A --->|                  |
-              |       ALU        |---> Result
-  Input B --->|                  |
-              |                  |---> Flags (zero, carry, overflow, sign)
- Operation -->|                  |
- code         +------------------+
-
-Operation codes select which operation to perform:
-  0000 = ADD        (adder circuit active)
-  0001 = SUBTRACT   (adder with B inverted + 1)
-  0010 = AND        (bitwise AND circuit)
-  0011 = OR         (bitwise OR circuit)
-  0100 = XOR        (bitwise XOR circuit)
-  0101 = NOT        (bitwise NOT circuit)
-  0110 = SHIFT LEFT (shift bits left by one position)
-  0111 = SHIFT RIGHT(shift bits right by one position)
-  ...
-```
-
-The operation code is routed to a **multiplexer** — a circuit that selects which of several inputs to pass to the output based on a selector signal. This is how the same ALU can perform many different operations.
-
-The **flags** output is crucial. After every ALU operation, the result sets several flag bits:
-
-```
-Zero flag (Z):      Set if the result is exactly zero
-Carry flag (C):     Set if the addition produced a carry out of the top bit
-Overflow flag (V):  Set if the result overflowed the signed range
-Sign flag (N):      Set if the result is negative (top bit is 1)
-```
-
-These flags feed into the control unit and are used by conditional branch instructions — "jump to this address if the zero flag is set" becomes a simple check of one flip-flop. This is how all comparisons, loops and conditionals work in hardware.
-
----
-
-## Registers — Storage Inside the CPU
-
-Circuits need somewhere to hold values temporarily while computing. The CPU has a small number of very fast storage locations called **registers** — built from a circuit called a **flip-flop**.
-
-### The Flip-Flop — One Bit of Memory
-
-A flip-flop is a circuit built from two NAND gates connected back to each other. It has a property that nothing we have seen so far has: **it remembers its state.** Feed it a 1 and it holds 1 until you change it. Feed it a 0 and it holds 0. This is the fundamental memory element of all digital electronics.
-
-```
-SR Flip-Flop (Set-Reset):
-
-S (Set)   ---[NAND]---+--- Q  (output)
-                |     |
-                +-----+
-                |     |
-R (Reset) ---[NAND]---+--- Q' (complement output)
-
-Pull S low: Q becomes 1, Q' becomes 0  (set state)
-Pull R low: Q becomes 0, Q' becomes 1  (reset state)
-Both high:  Q stays whatever it was     (hold state — this is the memory)
-
-One flip-flop stores one bit.
-Eight flip-flops in a row store one byte.
-64 flip-flops in a row store a 64-bit register.
-```
-
-Modern CPUs have many registers. On x86-64 (your Intel or AMD processor):
-
-```
-General purpose registers (64-bit each):
-  rax, rbx, rcx, rdx    <- general computation
-  rsi, rdi              <- source and destination for operations
-  rsp                   <- stack pointer (points to top of stack)
-  rbp                   <- base pointer (points to current stack frame)
-  r8 through r15        <- additional general purpose
-
-Special registers:
-  rip   <- instruction pointer (Program Counter)
-           holds address of NEXT instruction to execute
-  rflags <- all the condition flags (zero, carry, overflow, sign)
-
-Segment registers (historical, mostly unused in 64-bit mode):
-  cs, ds, ss, es, fs, gs
-```
-
-The **instruction pointer** (called Program Counter in general computing theory) is the most important register in the CPU. It contains the memory address of the next instruction to fetch. After each instruction executes, it automatically increments to point to the next instruction. This is what makes the fetch-decode-execute cycle self-driving — covered in Chapter 06.
-
----
-
-## The Control Unit — Turning Bit Patterns Into Actions
-
-The ALU computes. Registers store. But something has to read instructions from memory, decode them, and tell the ALU and registers what to do. That is the **control unit**.
-
-The control unit receives the instruction bits from memory, decodes them using a network of logic gates, and produces control signals that activate the right parts of the CPU.
-
-```
-Instruction arrives: 10110000 00000101
-                     ^^^^^^^^
-                     These 8 bits are the opcode
-
-Control unit decodes:
-
-10110000 means "move immediate byte into register AL"
-
-Control signals produced:
-  - Enable immediate value input to ALU
-  - Select register AL as destination
-  - Enable write to register AL
-  - Increment instruction pointer by 2 (opcode + one data byte)
-
-00000101 is the immediate value (5 in decimal)
-
-Result: the value 5 is loaded into register AL
-```
-
-The control unit is built entirely from logic gates — AND, OR, NOT combinations that respond to specific bit patterns. There is no software in the control unit. It is pure hardware logic. The designer of the CPU chose which bit patterns activate which operations and wired the gates accordingly. This choice is the **instruction set architecture**.
-
----
-
-## From Gates to RAM — How Memory Works
-
-Registers are fast but few. A CPU might have 16-32 registers. Programs need millions of storage locations. This is RAM — Random Access Memory.
-
-RAM is built from millions of flip-flop-like circuits organised in a grid. Each cell stores one bit. To read a bit, you specify its row (by activating the row's word line) and its column (by reading the bit line). To write, you activate the row and drive the bit line to the value you want.
-
-```
-Simplified RAM structure:
-
-Address decoder:
-  Takes the address bits as input
-  Activates exactly one row of the memory array
-
-Memory array:
-  Row 0:  [bit][bit][bit][bit][bit][bit][bit][bit]  <- 8 bits = 1 byte
-  Row 1:  [bit][bit][bit][bit][bit][bit][bit][bit]
-  Row 2:  [bit][bit][bit][bit][bit][bit][bit][bit]
-  ...
-  Row N:  [bit][bit][bit][bit][bit][bit][bit][bit]
-
-When address 0000 0010 (row 2) is given:
-  Decoder activates row 2's word line
-  All 8 bits of row 2 connect to the output
-  Those 8 bits are the byte at memory address 2
-```
-
-The address decoder is itself a tree of AND/OR gates that selects one row from all possible rows based on the address bits. A 32-bit address bus gives 2^32 = 4 billion possible addresses, each holding one byte — 4 gigabytes of addressable memory. A 64-bit address bus gives 2^64 theoretically addressable bytes.
-
----
-
-## The Clock — Synchronising Everything
-
-All these circuits — ALU, registers, control unit, RAM — need to operate in a coordinated sequence. A gate produces its output after a tiny propagation delay — typically a few picoseconds. If different parts of the circuit finish at different times, you get garbage results.
-
-The solution is a **clock** — a circuit that oscillates between 0 and 1 at a fixed frequency. Every circuit in the CPU waits for the clock edge before reading inputs or producing outputs. This synchronises the entire machine.
-
-```
-Clock signal:
-
- ___ ___ ___ ___ ___
-|   |   |   |   |   |
-    |   |   |   |   |___
-    ^   ^   ^   ^
-    Rising edges — on each rising edge, latches capture their inputs
-
-Clock frequency of 3.5 GHz means:
-  3,500,000,000 rising edges per second
-  One clock cycle = 0.000000000286 seconds = 286 picoseconds
-  One instruction often takes multiple clock cycles
-  Some instructions complete in 1 cycle, others take 4-6
-```
-
-The clock frequency is what people mean when they say "3.5 GHz processor." It is the number of times per second the clock oscillates. More cycles per second means more instructions can potentially complete per second — but only up to the limit of how fast signals propagate through the gates.
-
----
-
-## The Complete Hardware Stack — Logic Gate to CPU
-
-```
-Physics:
-  Electron flow through semiconductor material (silicon)
-  High voltage = 1, low voltage = 0
-         |
-         v
-Transistors (billions on one chip):
-  Physical switches controlled by voltage
-  On = 1, Off = 0
-  Switch in ~1 nanosecond
-         |
-         v
-Logic Gates (transistors wired together):
-  NOT, AND, OR, NAND, NOR, XOR, XNOR
-  Take binary inputs, produce binary output by rule
-  Implement logical decisions in hardware
-         |
-         v
-Combinational Circuits (gates wired together):
-  Half adder, full adder, multiplexer, decoder
-  Take inputs, produce outputs with no memory
-  Add bits, select between values, decode addresses
-         |
-         v
-Sequential Circuits (with memory):
-  Flip-flops (D, SR, JK types)
-  Store one bit, hold state until changed
-  Foundation of registers and RAM
-         |
-         v
-Functional Units (circuits wired together):
-  ALU       - performs arithmetic and logic
-  Registers - fast temporary storage (flip-flop arrays)
-  RAM       - large slow storage (flip-flop grid with decoder)
-  Control unit - decodes instructions, produces control signals
-         |
-         v
-The CPU (all functional units on one chip):
-  Fetch instruction from RAM
-  Decode instruction in control unit
-  Execute in ALU
-  Store result in register or RAM
-  Repeat forever
-         |
-         v
-Instruction Set Architecture:
-  The designer's choice of which bit patterns trigger which operations
-  This choice shapes everything that runs on this CPU
-  Every program ever written for this CPU must speak this language
-```
-
----
-
-## How This Shapes Everything
-
-The logic gate is the atom of computing. Everything above it — assembly language, C, operating systems, the internet, your fintech platform — is a structure built from this atom.
-
-When your Python script runs a loop, it is the CPU's control unit reading branch instruction bit patterns, checking the zero flag flip-flop, and activating the instruction pointer register to point to the loop start address. When you add two numbers in C, it is the ALU's XOR and AND gates producing sum and carry bits. When data is stored to memory, it is the RAM decoder activating a word line and the bit values latching into millions of flip-flops.
-
-The instruction set is the agreement between the hardware designer and the software world about what bit patterns mean. That agreement, once made, constrains everything. Software written for one instruction set will not run on a CPU with a different instruction set — because the bit patterns activate different gate combinations in the control unit, producing different or meaningless operations.
-
-This is why x86 programs do not run on ARM, and why the IBM PC's choice of the Intel 8088 instruction set in 1981 locked the entire PC industry into the x86 instruction set for over 40 years. The gate arrangements in that first chip cast a shadow that every subsequent Intel and AMD chip has had to maintain compatibility with.
-
-
----
-
-## Alternative Architectures — Other Ways to Make Computation Self-Driving
-
-Von Neumann's stored-program design is not the only way to make a CPU self-driving. Several fundamentally different architectures have been proposed and built, each solving the problem of automatic computation differently.
-
-### Harvard Architecture — Separate Instruction and Data Memory
-
-The Von Neumann architecture stores instructions and data in the same memory and uses one shared bus to access both. The **Harvard Architecture**, implemented in Howard Aiken's Harvard Mark I (1944), stores them separately — one dedicated memory for instructions and one for data, each with its own bus.
-
-```
-Von Neumann Architecture:
-  CPU <─────────────── single shared bus ───────────────> Memory
-                                                    (instructions + data mixed)
-
-Harvard Architecture:
-  CPU <─────────── instruction bus ──────────────> Instruction memory
-  CPU <─────────── data bus ─────────────────────> Data memory
-```
-
-The Harvard architecture gives one major advantage: the CPU can fetch the next instruction and read or write data simultaneously, because they are on separate buses. In Von Neumann, an instruction fetch and a data access compete for the same bus.
-
-However, pure Harvard has disadvantages. You cannot treat data as instructions — programs cannot be self-modifying. The two memory systems must be sized at design time. It is less flexible.
-
-**Where Harvard Architecture lives today:**
-
-Pure Harvard largely disappeared from general-purpose CPUs but survives in two places:
-
-Microcontrollers use pure Harvard. The ATmega chips in Arduino boards store programs in flash memory (instruction memory) and use separate RAM only for data. The two cannot be mixed. This makes the system simpler, cheaper, and more reliable for embedded applications.
-
-Modern general-purpose CPUs — your Intel or AMD or ARM processor — use a **Modified Harvard Architecture** internally while presenting a Von Neumann interface externally:
-
-```
-Main RAM (Von Neumann — unified, instructions and data mixed)
-         |
-         v
-L1 cache split into two separate caches (Harvard inside the CPU):
-  L1 Instruction Cache (I-cache) ──┐
-                                    ├──> CPU execution units
-  L1 Data Cache (D-cache) ─────────┘
-
-Your CPU looks like Von Neumann to software.
-Inside, the first cache level is split Harvard.
-The CPU fetches instructions from I-cache and data from D-cache
-simultaneously, getting Harvard's speed advantage
-while maintaining Von Neumann's flexibility.
-```
-
-This split is why you see separate I-cache and D-cache sizes quoted in CPU specifications. The 32KB I-cache and 32KB D-cache on a modern CPU are the Harvard layer hiding inside a Von Neumann machine.
-
-### Dataflow Architecture — No Program Counter at All
-
-Von Neumann and Harvard both have a Program Counter — a register that tracks which instruction to execute next. This forces instructions to execute in a fixed sequence, even when they do not depend on each other and could run simultaneously.
-
-**Dataflow architecture** eliminates the Program Counter entirely. An instruction executes as soon as all its input values are available, regardless of where it appears in the program text. The order of execution is determined by data dependencies, not by sequence.
-
-```
-Von Neumann (sequential — fixed order regardless of dependencies):
-  Step 1: execute instruction 1
-  Step 2: execute instruction 2  (waits even if it does not need step 1)
-  Step 3: execute instruction 3
-  ...
-
-Dataflow (dependency-driven — parallel when possible):
-
-  [A = 5] ──────────────────────────────┐
-                                         ├──> [C = A + B] ──> [print C]
-  [B = 3] ──────────────────────────────┘
-
-  [D = 7] ──> [E = D * 2] ──────────────────────────────────> [print E]
-
-  A+B and D*2 execute simultaneously as soon as inputs are ready.
-  No program counter. No sequence. Pure data dependency graph.
-```
-
-Dataflow architectures were researched heavily at MIT, Manchester and elsewhere in the 1970s and 1980s. They never replaced Von Neumann for general-purpose computing — they are hard to compile for and program. But their ideas profoundly influenced modern CPU design. **Out-of-order execution** — where a modern CPU reorders instructions based on data availability while maintaining the appearance of sequential execution — is a dataflow concept implemented inside a Von Neumann-compatible CPU.
-
-### Systolic Array — Wave Computation
-
-A systolic array is a grid of simple processing elements that pass data through in waves. Each element performs one simple operation and passes its result to its neighbour. The name comes from the heartbeat — systole is the contraction that pushes blood through the body. Data pulses through the array the same way.
-
-```
-Systolic array (e.g. for matrix multiplication):
-
-data flows right ──►
-                  ┌───┐  ┌───┐  ┌───┐
-                  │ × │->│ × │->│ × │
-                  └─┬─┘  └─┬─┘  └─┬─┘
-data flows down      │       │       │
-     │            ┌─▼─┐  ┌─▼─┐  ┌─▼─┐
-     ▼            │ × │->│ × │->│ × │
-                  └─┬─┘  └─┬─┘  └─┬─┘
-                     │       │       │
-                  ┌─▼─┐  ┌─▼─┐  ┌─▼─┐
-                  │ × │->│ × │->│ × │
-                  └───┘  └───┘  └───┘
-
-Each × = one multiply-accumulate processing element
-Data flows through the grid automatically every clock cycle
-Massively parallel with no fetch-decode-execute overhead
-No program counter, no opcode decoder
-```
-
-Google's **Tensor Processing Unit (TPU)** is a systolic array. It performs the matrix multiplications required by neural networks far more efficiently than a Von Neumann CPU can. The data flows through hardware automatically — no instruction fetch, no opcode decode, no control unit overhead. The computation is the physical structure of the chip.
-
-### Neuromorphic Architecture — Inspired by the Brain
-
-The brain is not a Von Neumann machine. It does not have a clock, a program counter, or a fetch-decode-execute cycle. It computes through massive parallelism with spiking neurons and weighted connections.
-
-**Neuromorphic architecture** attempts to compute the way the brain computes:
-
-```
-Von Neumann CPU:
-  Digital (strict 0 or 1)
-  Clock-driven (everything synchronised to clock edges)
-  Sequential fetch-decode-execute
-  Separate memory and processing units
-  General purpose
-
-Neuromorphic chip:
-  Analog-like (neurons fire when threshold exceeded)
-  Event-driven (compute only when input spikes arrive)
-  Memory and processing are the same element (synaptic weights)
-  Massively parallel (billions of connections active simultaneously)
-  Specialised for pattern recognition
-```
-
-Intel's **Loihi** chip and IBM's **TrueNorth** chip are neuromorphic. Extremely efficient for specific tasks like pattern recognition at very low power. Not general-purpose replacements for Von Neumann computers — specialised tools for specific computation types.
-
----
-
-## The Von Neumann Bottleneck — The Fundamental Flaw
-
-The Von Neumann architecture has one intrinsic weakness that every computer engineer knows about — the **Von Neumann bottleneck**.
-
-The CPU is fast. Modern CPUs can execute billions of instructions per second. But both instructions and data must travel through the same bus between CPU and memory. The bus is slower than the CPU. The CPU constantly waits for instructions or data to arrive from memory. The bus is the bottleneck.
-
-```
-Von Neumann Bottleneck:
-
-CPU (very fast) <────── single bus (slower) ────── Memory (slow)
-                        ^
-                        |
-                 BOTTLENECK HERE
-                 CPU waits here
-                 billions of times per second
-```
-
-Every technique modern CPUs use to improve performance is fundamentally an attempt to work around this bottleneck:
-
-```
-Technique              How it addresses the bottleneck
--------------------    --------------------------------------------------
-CPU caches             Keep frequently used data close to CPU
-                       so the slow bus is needed less often
-
-Out-of-order execution Execute instructions in a different order
-                       to keep the CPU busy while waiting for memory
-
-Prefetching            Predict what memory will be needed
-                       and fetch it before the CPU requests it
-
-Speculative execution  Execute instructions before knowing if needed
-                       to avoid stalls from waiting for data
-
-Pipelining             Overlap fetch/decode/execute of multiple instructions
-                       so the bus is used more continuously
-
-Multiple cores         More CPUs — but now all cores compete for
-                       the same shared memory bus
-```
-
-None of these solve the bottleneck. They manage it. The bottleneck is intrinsic to the design. This is precisely why Harvard's separate buses, dataflow's elimination of the program counter, and systolic arrays' data-flowing-through-hardware approach are genuinely interesting alternatives — each attacks the bottleneck from a different angle.
-
-
-> **The transistor switch became the logic gate. The logic gate became the CPU instruction. The CPU instruction became assembly language. Assembly language became C. C built Unix. Unix shaped Linux. Linux runs the world. The entire chain begins with electrons and silicon.**
--e 
----
-
-
----
-
-## The Von Neumann Architecture — How the CPU Drives Itself
-
-Chapter 01 has explained what the CPU is made of — transistors, gates, ALU, registers, control unit. Now the question is: what makes it self-driving? What causes it to keep executing instructions without a human triggering each one?
-
-The answer is the **Von Neumann architecture** — a design principle that emerged in the mid-1940s and defines how every general-purpose computer works to this day.
-
-### The Stored-Program Concept
-
-Before Von Neumann's design (and those of Eckert, Turing and Zuse — covered in Chapter 02), programs were either hardwired into the machine or entered by hand for each run. The revolutionary idea was:
-
-> Store the program instructions in the same memory as the data. Let the CPU fetch them automatically, one after another, forever.
-
-This made the CPU self-driving. Once you place a program in memory and tell the CPU where to start, it runs without any further human intervention.
-
-### The Fetch-Decode-Execute Cycle
-
-The CPU runs one loop continuously from power-on to power-off:
-
-```
-┌─────────────────────────────────────────────────────┐
-│                                                     │
-│   FETCH      Read next instruction from memory      │
-│     ↓        at the address in the Program Counter  │
-│   DECODE     Figure out what that instruction means │
-│     ↓        (the decoder from earlier in this ch.) │
-│   EXECUTE    Carry out the instruction              │
-│     ↓        ALU computes, registers update         │
-│   INCREMENT  Program Counter moves to next address  │
-│     ↓        automatically — no human needed        │
-│     └──────────────── repeat forever ───────────────┘
-│                                                     │
-└─────────────────────────────────────────────────────┘
-```
-
-The **Program Counter** (called Instruction Pointer on x86 — register `RIP`) is the register that holds the address of the next instruction. After each instruction executes, it increments automatically. Jump instructions change it to a different address. That is all branching, looping and function calls are — changing the Program Counter.
-
-Nobody triggers this loop. It runs by itself the moment electricity reaches the CPU because the circuits are wired to behave this way. This is Von Neumann's gift: **the machine drives itself.**
-
-### Memory — Instructions and Data Together
-
-The Von Neumann architecture uses one unified memory for both program instructions and data. This has a profound consequence: a program can read its own instructions as data, and can write new instructions into memory and then execute them.
-
-```
-Memory address space (Von Neumann — unified):
-
-Address 0x00000000: [instruction byte]
-Address 0x00000001: [instruction byte]
-Address 0x00000002: [data byte]          <- same address space
-Address 0x00000003: [instruction byte]
-...
-
-CPU treats address 0x00000002 as data when executing instruction at 0x00000001
-CPU treats address 0x00000002 as instruction if Program Counter points there
-
-Same bytes. Same addresses. Context determines meaning.
-```
-
-This is the foundation of self-modifying code, just-in-time compilation, and — as Chapter 14 will show — shellcode injection. The attacker places bytes in the data area and tricks the CPU into executing them as instructions. Von Neumann's unified memory is what makes this possible.
-
-### The Fixed Starting Address — How the CPU Knows Where to Begin
-
-Every CPU architecture defines a fixed starting address — the address the Program Counter is set to when electricity first hits the chip. The CPU does not decide this. It is hardwired into the silicon.
-
-```
-x86-64: Program Counter starts at physical address 0xFFFFFFF0
-  The BIOS/UEFI ROM chip is mapped to this address by the motherboard
-  CPU immediately begins fetch-decode-execute on BIOS code
-  BIOS runs, finds boot device, loads bootloader
-  Chain continues until your shell appears — Chapter 10
-
-ARM64: Program Counter starts at a reset vector address
-  Configured by the chip manufacturer
-  Boot ROM is mapped there
-  Same principle, different address
-
-RISC-V: starts at address defined by hardware design
-  Often 0x1000 where the boot ROM lives
-  Same principle again
-```
-
-The fixed starting address is why the boot chain in Chapter 10 works automatically. Nobody presses "start." The hardware guarantees code exists at that address, and the CPU's hardwired Program Counter initialisation guarantees execution begins there.
-
--e 
----
-
--e 
----
-
-# Chapter 2: From Gates to a Working CPU and Memory Hierarchy
-
-Chapter 01 established that the CPU contains registers and RAM is a grid of flip-flops. This chapter fills the gap between those hardware facts and everything the rest of the document assumes — what a memory address actually is, how registers differ from RAM, why the memory hierarchy exists, and how virtual memory and page tables work. These concepts are mentioned throughout the document (page tables in rings, page faults in memory vulnerabilities, TEE in mobile) but never defined from scratch. This chapter defines them all.
-
----
-
-## What Is a Memory Address
-
-A memory address is simply a number — an integer that identifies one specific byte in the computer's memory. Nothing more.
-
-Imagine RAM as an enormous array of bytes. The first byte is at index 0. The second at index 1. The millionth at index 999,999. The index is the address.
-
-```
-RAM as a byte array (conceptual):
-
-Address    Value (what is stored there)
-─────────  ────────────────────────────
-0x00000000  0x48  <- the byte at address 0
-0x00000001  0x65
-0x00000002  0x6C
-0x00000003  0x6C
-0x00000004  0x6F  <- these five bytes spell "Hello" in ASCII
-0x00000005  0x00  <- null terminator
-0x00000006  0x00  <- unused
-...
-0xFFFFFFFF  0x00  <- the last byte (32-bit address space)
-```
-
-The CPU reads and writes memory using addresses. Every instruction that touches memory specifies an address. Every variable in your program lives at an address. Every function lives at an address. The address is how anything in memory is found.
-
-### How Many Addresses Exist
-
-The number of addressable bytes depends on how many bits the CPU uses for addresses. This is what "32-bit" and "64-bit" mean for address space:
-
-```
-8-bit address bus:   2^8  =           256 addressable bytes
-16-bit address bus:  2^16 =        65,536 bytes = 64 KB
-32-bit address bus:  2^32 = 4,294,967,296 bytes = 4 GB
-64-bit address bus:  2^64 = 18,446,744 TB (theoretical)
-
-Real 64-bit CPUs implement 48 bits of address space:
-  2^48 = 256 TB (enough for the foreseeable future)
-  Top 16 bits must be all-zeros or all-ones (canonical form)
-  This leaves room to extend to more bits in the future
-```
-
-This is the concrete meaning of "32-bit CPU capped at 4GB RAM" — a 32-bit address can only point to 4 billion different bytes. To use more RAM you need more address bits. 64-bit addresses make the address space essentially unlimited for current purposes.
-
-### Addresses in Hexadecimal
-
-Memory addresses are always written in hexadecimal (base 16) because one hex digit represents exactly four bits:
-
-```
-Hex digits: 0 1 2 3 4 5 6 7 8 9 A B C D E F (16 values)
-One hex digit = 4 bits
-Two hex digits = 8 bits = one byte
-
-32-bit address: 8 hex digits  e.g. 0x00401234
-64-bit address: 16 hex digits e.g. 0x00007FFF5FBFF8B0
-
-The 0x prefix means "this number is in hexadecimal"
-0xFF = 255 decimal
-0x10 = 16 decimal
-0x100 = 256 decimal
-```
-
-When you see a memory address in a debugger, an error message, or a disassembly listing, it is always a hexadecimal number referring to a specific byte location.
-
----
-
-## Registers vs RAM — Two Completely Different Types of Storage
-
-Registers and RAM are both storage — they both hold binary values. But they are built differently, located differently, sized differently, and operate at completely different speeds.
-
-### Registers — Storage Inside the CPU Die
-
-Registers are flip-flop circuits built directly into the CPU chip itself, millimetres from the execution units. The CPU accesses them with zero memory bus traffic — they are wired directly to the ALU.
-
-```
-Register characteristics:
-  Location:    inside the CPU die itself
-  Built from:  flip-flops (Chapter 01 — D flip-flops)
-  Quantity:    very few — 16 to 32 general-purpose registers
-  Size:        one register = 64 bits (8 bytes) on a 64-bit CPU
-  Access time: 0 clock cycles (wired directly)
-  Named:       every register has a name (RAX, RBX, RSP on x86-64)
-  Purpose:     immediate operands for current instruction
-```
-
-Every instruction operates on registers. `ADD RAX, RBX` adds two registers. `MOV RAX, 5` loads a value into a register. The ALU has direct electrical connections to the register file — there is no bus, no wait, no fetch. The register values are available in the same clock cycle they are needed.
-
-### RAM — Storage on Separate Chips
-
-RAM (Random Access Memory) is a large grid of storage cells on separate chips connected to the CPU via a memory bus. It holds gigabytes of data but is far slower than registers.
-
-```
-RAM characteristics:
-  Location:    separate chips on the motherboard (desktop)
-               on-package but separate from CPU die (mobile — LPDDR)
-  Built from:  DRAM cells (capacitors that hold charge)
-  Quantity:    billions to trillions of addressable bytes
-  Size:        addressed one byte at a time
-  Access time: 60-100 nanoseconds (hundreds of clock cycles)
-  Named:       not named — identified by address number
-  Purpose:     long-term storage of all data and code during execution
-```
-
-When the CPU needs data from RAM, it must: send the address over the memory bus, wait for the memory controller to locate it, wait for the DRAM to respond, and receive the value over the bus. This takes 100-300 clock cycles on a modern CPU. During those cycles the CPU may stall completely — waiting.
-
-### The Critical Difference in One Diagram
-
-```
-CPU chip:
-┌─────────────────────────────────────────────┐
-│  ALU ←──────────────────────► Register File │
-│   ↑     direct wire, 0 cycles    RAX RBX    │
-│   │     no bus, no wait          RCX RDX    │
-│   │                              RSP RBP    │
-│   │                              ... 16 total│
-└───┼─────────────────────────────────────────┘
-    │ memory bus (100-300 cycles round trip)
-    │
-┌───▼──────────────────────────────────────────┐
-│  RAM chips: 8 GB of addressable bytes        │
-│  [byte 0][byte 1][byte 2]...[byte 8589934591]│
-└──────────────────────────────────────────────┘
-
-Register access: zero bus transactions, zero wait
-RAM access:      one bus transaction, 100-300 cycle wait
-```
-
-This is why the CPU has so few registers — registers are expensive real estate on the CPU die. Every additional register requires more transistors, more routing, and more power. Sixteen to thirty-two is the practical limit. Everything else goes in RAM.
-
----
-
-## The Memory Hierarchy — Bridging the Speed Gap
-
-The 100-300 cycle penalty for RAM access would make modern CPUs impossibly slow if every instruction had to fetch from RAM. A CPU running at 3 GHz executing 3 billion instructions per second could not afford 300-cycle waits for every memory access.
-
-The solution is a **memory hierarchy** — multiple layers of storage, each faster but smaller than the one below it. Data migrates up toward the CPU as it is used and falls back down as it becomes less needed.
-
-```
-Memory Hierarchy (fastest/smallest at top, slowest/largest at bottom):
-
-┌────────────────────────────────────────────────────────────────────┐
-│  REGISTERS                                                         │
-│  Size: 16-32 × 8 bytes = ~256 bytes total                         │
-│  Speed: 0 cycles (wired to ALU)                                    │
-│  Location: inside CPU die                                          │
-└────────────────────────────────────────────────────────────────────┘
-        ↕ automatic (hardware managed)
-┌────────────────────────────────────────────────────────────────────┐
-│  L1 CACHE (Level 1)                                                │
-│  Size: 32-64 KB per core (split: I-cache + D-cache)               │
-│  Speed: 4-5 cycles                                                 │
-│  Location: inside CPU die, next to each core                       │
-│  Note: Modified Harvard architecture — separate I and D caches     │
-└────────────────────────────────────────────────────────────────────┘
-        ↕ automatic (hardware managed)
-┌────────────────────────────────────────────────────────────────────┐
-│  L2 CACHE (Level 2)                                                │
-│  Size: 256 KB to 1 MB per core                                     │
-│  Speed: 12-15 cycles                                               │
-│  Location: inside CPU die, per-core or shared between a few cores  │
-└────────────────────────────────────────────────────────────────────┘
-        ↕ automatic (hardware managed)
-┌────────────────────────────────────────────────────────────────────┐
-│  L3 CACHE (Level 3 / Last Level Cache)                             │
-│  Size: 8-64 MB (shared across all cores)                           │
-│  Speed: 30-50 cycles                                               │
-│  Location: inside CPU die, shared                                  │
-└────────────────────────────────────────────────────────────────────┘
-        ↕ automatic (hardware managed)
-┌────────────────────────────────────────────────────────────────────┐
-│  MAIN MEMORY (RAM — DRAM chips)                                    │
-│  Size: 8 GB to 128 GB typical                                      │
-│  Speed: 100-300 cycles                                             │
-│  Location: separate chips on motherboard                           │
-└────────────────────────────────────────────────────────────────────┘
-        ↕ OS managed (demand paging)
-┌────────────────────────────────────────────────────────────────────┐
-│  STORAGE (SSD or HDD)                                              │
-│  Size: hundreds of GB to terabytes                                 │
-│  Speed: microseconds to milliseconds (millions of cycles)          │
-│  Location: separate device, connected via PCIe or SATA             │
-│  Used as: swap space (virtual memory overflow)                     │
-└────────────────────────────────────────────────────────────────────┘
-```
-
-### How Cache Works — Locality of Reference
-
-Cache works because programs exhibit **locality of reference** — two predictable patterns:
-
-**Temporal locality** — if you access a memory address, you are likely to access it again soon. Variables in a loop are accessed thousands of times. The loop counter sits in cache the whole time.
-
-**Spatial locality** — if you access address X, you are likely to access addresses near X soon. An array is accessed sequentially. When you read element 5, the cache prefetches elements 6, 7, 8... into cache in the same cache line.
-
-```
-Cache line = the unit of data transferred between cache levels
-  Typically 64 bytes (8 × 64-bit values)
-  When you access one byte, the entire 64-byte cache line is loaded
-  Neighbouring bytes come along for free
-
-Example: iterating an int array (4 bytes each):
-  Access array[0]:
-    Cache miss — load 64-byte cache line (covers array[0] through array[15])
-  Access array[1]: cache hit (already in cache from previous load)
-  Access array[2]: cache hit
-  ...
-  Access array[15]: cache hit
-  Access array[16]: cache miss — load next 64-byte line
-  
-  Result: 2 cache misses for 16 accesses = 87.5% hit rate
-  
-Example: accessing every 17th element:
-  Access array[0]: cache miss
-  Access array[17]: cache miss (different cache line)
-  Access array[34]: cache miss
-  Access every element: 100% cache misses
-  Performance can be 10-50× worse than sequential access
-```
-
-### Cache in Your System
-
-```bash
-# See your CPU's cache sizes
-lscpu | grep -i cache
-# L1d cache: 32K   (L1 data cache per core)
-# L1i cache: 32K   (L1 instruction cache per core)
-# L2 cache:  256K  (per core)
-# L3 cache:  8192K (shared across all cores = 8MB)
-
-# More detail
-cat /sys/devices/system/cpu/cpu0/cache/index*/size
-cat /sys/devices/system/cpu/cpu0/cache/index*/type
-
-# See cache miss statistics for a program
-perf stat -e cache-misses,cache-references ls
-# cache-references: how many times cache was consulted
-# cache-misses:     how many times it had to go to next level
-```
-
----
-
-## Registers in Detail — Every Register in x86-64 and ARM64
-
-### x86-64 Register Set (Intel and AMD)
-
-The x86-64 architecture has 16 general-purpose 64-bit registers, plus several special-purpose registers.
-
-```
-General-purpose registers (64-bit):
-
-Name   Alias history        Primary conventional use
-────   ─────────────────    ─────────────────────────────────────────
-RAX    EAX (32) AX (16)    Accumulator — return value from functions
-RBX    EBX (32) BX (16)    Base — callee-saved (must be preserved)
-RCX    ECX (32) CX (16)    Counter — 4th argument, loop counters
-RDX    EDX (32) DX (16)    Data — 3rd argument, I/O operations
-RSI    ESI (32) SI (16)    Source Index — 2nd argument, string source
-RDI    EDI (32) DI (16)    Destination — 1st argument, string dest
-RSP    ESP (32) SP (16)    Stack Pointer — top of current stack
-RBP    EBP (32) BP (16)    Base Pointer — base of current stack frame
-R8     R8D (32) R8W (16)   5th function argument
-R9     R9D (32) R9W (16)   6th function argument
-R10    R10D                 Caller-saved scratch register
-R11    R11D                 Caller-saved scratch register
-R12    R12D                 Callee-saved scratch register
-R13    R13D                 Callee-saved scratch register
-R14    R14D                 Callee-saved scratch register
-R15    R15D                 Callee-saved scratch register
-
-Each 64-bit register contains its 32-bit, 16-bit and 8-bit versions:
-
-RAX (64-bit):  [63.....32][31..16][15..8][7..0]
-EAX (32-bit):             [31..........8][7..0]
-AX  (16-bit):                            [15..8][7..0]
-AH  (8-bit):                             [15..8]       <- high byte of AX
-AL  (8-bit):                                    [7..0] <- low byte of AX
-
-Writing to EAX zeroes the upper 32 bits of RAX (x86-64 quirk)
-Writing to AX, AH, AL does NOT zero upper bits
-```
-
-Special-purpose registers:
-
-```
-RIP    Instruction Pointer (Program Counter)
-       Always points to the NEXT instruction to execute
-       Cannot be read/written directly in most instructions
-       Changed by: JMP, CALL, RET, conditional branches
-
-RFLAGS Flags register — condition codes from last operation
-       ZF (Zero Flag):     set if last result was zero
-       CF (Carry Flag):    set if last operation carried out of top bit
-       SF (Sign Flag):     set if last result was negative
-       OF (Overflow Flag): set if last result overflowed signed range
-       IF (Interrupt Flag):set if interrupts are enabled (ring 0 only)
-       DF (Direction Flag):controls string operation direction
-
-Segment registers (historical, mostly unused in 64-bit):
-       CS (Code Segment):  holds CPL in low 2 bits (the ring level)
-       DS, ES, FS, GS, SS: data and stack segments
-
-Control registers (ring 0 only):
-       CR0: CPU mode flags (protected mode enable, paging enable)
-       CR2: holds address that caused last page fault
-       CR3: physical address of current page table (PML4)
-       CR4: CPU feature flags (PAE, PSE, VME, etc.)
-
-Model-Specific Registers (MSRs — ring 0 only):
-       IA32_LSTAR (0xC0000082): SYSCALL entry point address
-       IA32_APIC_BASE: local APIC base address
-       FS.base, GS.base: base addresses for FS/GS segment registers
-                         used for thread-local storage
-```
-
-### System Call Calling Convention on x86-64
-
-When a program makes a system call, registers have specific roles:
-
-```
-Register   Role in system call
-────────   ────────────────────────────────
-RAX        System call number (what to do)
-RDI        Argument 1
-RSI        Argument 2
-RDX        Argument 3
-R10        Argument 4 (note: not RCX as in function calls)
-R8         Argument 5
-R9         Argument 6
-RAX        Return value (after syscall returns)
-RCX        Destroyed by SYSCALL (saved RIP)
-R11        Destroyed by SYSCALL (saved RFLAGS)
-
-Example: write(1, "hello", 5)
-  MOV RAX, 1      <- syscall number 1 = write
-  MOV RDI, 1      <- fd = 1 (stdout)
-  MOV RSI, msg    <- pointer to "hello" string
-  MOV RDX, 5      <- 5 bytes to write
-  SYSCALL         <- cross ring 3 -> ring 0
-```
-
-### Function Calling Convention on x86-64 (System V ABI)
-
-When a C function is called, the compiler follows this convention:
-
-```
-Register   Role in function call          Preserved across call?
-────────   ──────────────────────────     ─────────────────────
-RDI        1st argument                   NO (caller-saved)
-RSI        2nd argument                   NO
-RDX        3rd argument                   NO
-RCX        4th argument                   NO
-R8         5th argument                   NO
-R9         6th argument                   NO
-RAX        Return value                   NO
-RBX        Callee must preserve           YES (callee-saved)
-RBP        Callee must preserve           YES
-R12-R15    Callee must preserve           YES
-RSP        Stack pointer                  YES (by ABI contract)
-RIP        Next instruction               (managed automatically)
-
-Caller-saved: caller must save these before the call if it needs them
-Callee-saved: called function must save and restore these before returning
-```
-
-### ARM64 Register Set (AArch64)
-
-ARM64 has 31 general-purpose 64-bit registers named X0-X30, plus several special-purpose registers.
-
-```
-General-purpose registers (64-bit Xn, or 32-bit Wn for lower half):
-
-Register   AArch64 Role
-────────   ──────────────────────────────────────────────────
-X0         Argument 1 / Return value
-X1         Argument 2 / 2nd return value
-X2         Argument 3
-X3         Argument 4
-X4         Argument 5
-X5         Argument 6
-X6         Argument 7
-X7         Argument 8
-X8         Indirect result register / syscall number
-X9-X15     Caller-saved temporary registers
-X16-X17    Intra-procedure-call scratch (linker uses these)
-X18        Platform register (OS-specific use)
-X19-X28    Callee-saved registers (function must preserve)
-X29        Frame Pointer (equivalent to x86 RBP)
-X30        Link Register — return address for function calls
-           (equivalent to what x86 pushes on stack with CALL)
-XZR/WZR    Zero register — always reads as 0, writes discarded
-
-Special-purpose registers:
-SP         Stack Pointer (not X31 — separate register)
-PC         Program Counter (not directly accessible)
-PSTATE     Processor state (equivalent to RFLAGS)
-           N = Negative, Z = Zero, C = Carry, V = Overflow
-
-ARM64 system registers (accessed via MRS/MSR instructions):
-SCTLR_EL1  System Control Register (MMU enable, cache enable)
-TTBR0_EL1  Translation Table Base Register 0 (user page table)
-TTBR1_EL1  Translation Table Base Register 1 (kernel page table)
-ESR_EL1    Exception Syndrome Register (why did an exception occur)
-FAR_EL1    Fault Address Register (address that caused page fault)
-ELR_EL1    Exception Link Register (return address from exception)
-SPSR_EL1   Saved Program Status Register (saved PSTATE)
-```
-
-### ARM64 System Call Convention
-
-```
-Register   Role
-────────   ────────────────────────
-X8         System call number
-X0         Argument 1 / Return value
-X1         Argument 2
-X2         Argument 3
-X3         Argument 4
-X4         Argument 5
-X5         Argument 6
-SVC #0     The system call instruction (supervisor call)
-```
-
-### Key Differences Between x86-64 and ARM64 Registers
-
-```
-x86-64:                              ARM64:
-  16 general-purpose registers         31 general-purpose registers
-  Irregular historical names           Regular names X0-X30
-  (RAX,RBX,RCX,RDX,RSI,RDI,RSP,RBP)
-  Return address pushed to stack       Return address in X30 (link reg)
-  No dedicated zero register           XZR always zero (useful for clears)
-  RIP is instruction pointer           PC not directly accessible
-  SYSCALL instruction                  SVC instruction
-  Syscall number in RAX                Syscall number in X8
-  First 6 args in RDI,RSI,RDX,        First 8 args in X0-X7
-    RCX,R8,R9
-
-Common: both use registers for function arguments, both have a stack
-pointer, both have a flags/status register for condition codes.
-```
-
----
-
-## Virtual Memory and Page Tables — The Address Translation Layer
-
-When a program runs, it uses **virtual addresses** — addresses in its own private address space that do not correspond directly to physical RAM locations. The CPU transparently translates virtual addresses to physical addresses before accessing RAM.
-
-### Why Virtual Memory Exists
-
-Without virtual memory, every program would need to be loaded at a fixed physical address. Two programs could not use the same address. A program would need to know at compile time exactly where in RAM it would live. Programs larger than physical RAM could not run.
-
-Virtual memory solves all of this by giving each process a private address space. Every process sees a full 64-bit address space as if it owns all of it. The kernel manages the mapping from each process's virtual addresses to actual physical RAM.
-
-```
-Without virtual memory:
-  Program A compiled to run at physical address 0x10000
-  Program B compiled to run at physical address 0x10000
-  CONFLICT — they cannot both run simultaneously at that address
-
-With virtual memory:
-  Program A uses virtual address 0x10000 -> maps to physical 0x50000
-  Program B uses virtual address 0x10000 -> maps to physical 0x80000
-  Both use the same virtual address, different physical RAM
-  Neither knows about the other
-```
-
-### The Memory Management Unit (MMU)
-
-The **MMU (Memory Management Unit)** is a hardware component inside the CPU that performs address translation. Every single memory access — every instruction fetch, every data read, every data write — goes through the MMU.
-
-```
-Program accesses virtual address 0x00401234:
-         |
-         v
-MMU receives: virtual address 0x00401234
-MMU splits the address into parts:
-  bits 47-39: PML4 index  (top-level page table)
-  bits 38-30: PDPT index  (second level)
-  bits 29-21: PD index    (third level)
-  bits 20-12: PT index    (fourth level — page table entry)
-  bits 11-0:  Page offset (offset within the 4KB page)
-
-MMU walks the page table tree in RAM:
-  1. Read CR3 register -> physical address of PML4 table
-  2. Use PML4 index -> get physical address of PDPT table
-  3. Use PDPT index -> get physical address of PD table
-  4. Use PD index   -> get physical address of PT table
-  5. Use PT index   -> get page table entry (PTE)
-  6. PTE contains:  physical page address + flags
-  7. Add page offset to physical page address
-  8. Result: physical address 0x00A01234
-
-MMU sends physical address 0x00A01234 to memory controller
-Memory controller fetches the byte
-Returns to CPU
-```
-
-This walk happens for every memory access. It would be impossibly slow if done in RAM every time. The CPU has a **TLB (Translation Lookaside Buffer)** — a small cache of recent virtual-to-physical translations.
-
-```
-TLB — Translation Lookaside Buffer:
-  Small fast cache inside the MMU
-  Stores recently used virtual->physical translations
-  Typically holds 64-1024 entries
-  Hit rate: typically 99%+ (due to spatial and temporal locality)
-
-TLB hit:  virtual address -> TLB -> physical address (1-2 cycles)
-TLB miss: virtual address -> TLB miss -> page table walk -> physical
-          Page table walk: 4 memory accesses = 400-1200 cycles
-          Result stored in TLB for next access
-```
-
-### Page Table Entries — What the Flags Mean
-
-Each page table entry is 8 bytes on x86-64. The physical address occupies bits 51-12. The remaining bits are flags:
-
-```
-Page table entry flags (x86-64):
-
-Bit  Name           Meaning
-─── ──────────────  ──────────────────────────────────────────────
-0   Present (P)     1 = page is in RAM, 0 = page not present (fault)
-1   Read/Write (R/W)0 = read-only, 1 = read-write
-2   User/Super (U/S)0 = kernel only (ring 0), 1 = user accessible (ring 3)
-3   Write-Through   Cache write policy
-4   Cache Disable   1 = do not cache this page
-5   Accessed (A)    Set by hardware when page is read
-6   Dirty (D)       Set by hardware when page is written
-7   Page Size (PS)  1 = this entry maps a 2MB page (huge page)
-8   Global          1 = don't flush from TLB on process switch
-62  No-Execute (NX) 1 = cannot execute code from this page (the NX bit)
-
-Key security flags:
-  U/S bit: if 0, ring 3 cannot access this page -> kernel protection
-  NX bit:  if 1, CPU refuses to execute from this page -> stack/heap protection
-  R/W bit: if 0, writing causes page fault -> read-only code protection
-```
-
----
-
-## Page Faults — What Happens When Address Translation Fails
-
-A **page fault** is a CPU exception that occurs when the MMU cannot translate a virtual address. It is not necessarily an error — it is a normal mechanism the OS uses to implement several features.
-
-### Types of Page Faults
-
-```
-Page fault occurs when:
-  1. Present bit = 0 in the page table entry
-     The page is not currently in RAM
-  2. Access violates flags (write to read-only, ring 3 access to ring 0 page)
-  3. Address is not mapped at all (no page table entry)
-
-When a page fault occurs:
-  1. CPU saves current state (registers, instruction pointer)
-  2. CPU loads CR2 register with the faulting virtual address
-  3. CPU jumps to the page fault handler (kernel code)
-  4. Kernel examines the fault
-  5. Kernel decides what to do
-  6. Kernel returns — CPU resumes where it left off (or kills process)
-```
-
-### What the Kernel Does With Each Type
-
-```
-Case 1 — Page not present, but in the swap file:
-  Kernel finds the page in swap (on disk)
-  Kernel allocates a physical RAM frame
-  Kernel reads the page from disk into RAM
-  Kernel updates the page table entry (Present=1, physical address)
-  Kernel returns from fault handler
-  CPU retries the instruction — now succeeds
-  From the program's perspective: nothing happened (slightly slower)
-  This is demand paging — pages loaded from disk only when accessed
-
-Case 2 — Copy-on-write page (fork() optimization from Chapter 10):
-  Process A and Process B share a physical page (marked read-only)
-  Process A writes to the page -> page fault (write to read-only)
-  Kernel: this is a COW page, not a real error
-  Kernel copies the page to a new physical frame
-  Kernel updates Process A's page table to point to new frame
-  Kernel marks the new frame as writable
-  Kernel returns from fault handler
-  CPU retries the write — now succeeds on the private copy
-  Process B still uses the original shared page
-
-Case 3 — Stack growth:
-  Program accesses address just below its current stack
-  No page table entry exists yet
-  Kernel: this is a valid stack extension
-  Kernel allocates a new physical page
-  Kernel creates a page table entry for this new stack page
-  Kernel returns
-  CPU retries — stack now extended
-
-Case 4 — Access violation (segfault):
-  Program accesses address 0x00000000 (null pointer dereference)
-  Or accesses kernel memory from ring 3
-  Or writes to a read-only page
-  Kernel: this is an illegal access
-  Kernel sends SIGSEGV to the process
-  Process dies with "Segmentation fault"
-  This is the kernel enforcing memory protection
-
-Case 5 — mmap lazy loading:
-  Program called mmap() to map a file
-  Kernel created page table entries but marked them not-present
-  Program first accesses a mapped address -> page fault
-  Kernel: loads the file page from disk
-  Kernel updates page table entry
-  CPU retries — now reads file data from RAM
-  File data never loaded until the moment it is needed
-```
-
-```bash
-# See page fault statistics for your system
-vmstat 1 5
-# pgfault column: minor faults (COW, stack growth, already in RAM)
-# pgmajfault: major faults (required disk read)
-
-# See page faults for a specific program
-/usr/bin/time -v ls 2>&1 | grep "page faults"
-# Major (requiring I/O): 0
-# Minor (reclaiming a frame): 247
-
-# See current page table mappings of your shell
-cat /proc/$$/maps
-# Shows: virtual address range, permissions, offset, device, inode, name
-# e.g.: 00400000-00401000 r-xp ... /bin/bash
-#       r-xp = read, exec, private (code segment — NX not set here, but no write)
-#       00401000-00402000 r--p ... /bin/bash
-#       r--p = read-only (data segment — read-only pages)
-```
-
----
-
-## Virtual Memory Layout — How a Process Sees Memory
-
-Every process has a virtual address space divided into regions. On x86-64 Linux:
-
-```
-Virtual address space of a process (64-bit, simplified):
-
-0xFFFFFFFFFFFFFFFF  <- top of 64-bit space
-│                   
-│  KERNEL SPACE     <- kernel mapped here, U/S=0 (ring 3 cannot access)
-│  (upper half)       same kernel mapping in every process's page table
-│                   
-0xFFFF800000000000  <- kernel space begins (canonical upper half)
-
-  [gap — invalid addresses, accessing causes fault]
-
-0x00007FFFFFFFFFFF  <- top of user space (canonical upper half boundary)
-│
-│  STACK            <- grows downward
-│  (e.g. RSP starts near 0x00007FFF5FBFFFFF)
-│  each thread has its own stack
-│  
-│  [large gap — unmapped, accessing causes segfault]
-│
-│  HEAP             <- grows upward (brk() / mmap())
-│  (dynamically allocated memory — malloc lives here)
-│
-│  BSS SEGMENT      <- uninitialised global variables (zeroed)
-│
-│  DATA SEGMENT     <- initialised global variables
-│
-│  TEXT SEGMENT     <- your compiled code (NX=0 — executable)
-│                      (mapped read-only — NX=1 for stack/heap)
-│
-0x0000000000400000  <- typical ELF load address (with ASLR: randomised)
-
-0x0000000000000000  <- address 0 = NULL (not mapped, accessing = segfault)
-```
-
-ASLR (Address Space Layout Randomisation from Chapter 15) randomises the starting addresses of the stack, heap, and loaded libraries. The kernel simply places each region at a different random offset when loading the process.
-
----
-
-## TEE, OP-TEE, and Trusted Applications — Defined
-
-These terms appear in Chapter 03 (TrustZone) and Chapter 16 (Mobile) without definition. Here they are defined precisely.
-
-### TEE — Trusted Execution Environment
-
-A TEE is a secure, isolated execution environment that runs alongside the main operating system. It has its own memory, its own code, and hardware-enforced isolation from the normal OS.
-
-```
-TEE characteristics:
-  Runs in ARM TrustZone Secure World (or Intel SGX on x86)
-  Has its own memory region that Normal World cannot access
-  Has its own storage (secure storage — encrypted with device key)
-  The Normal World OS cannot read or modify TEE memory
-  Even a fully compromised Android/iOS cannot touch the TEE
-  Has a small trusted OS (like OP-TEE or Apple's sepOS)
-  Runs small isolated programs called Trusted Applications (TAs)
-```
-
-### OP-TEE — Open Portable Trusted Execution Environment
-
-OP-TEE is an **open-source TEE operating system** that runs in the ARM TrustZone Secure World. It is the TEE OS used in many Android devices.
-
-```
-OP-TEE in the system:
-
-Normal World (NS=1):               Secure World (NS=0):
-  Linux kernel (EL1)                 OP-TEE OS (EL1 Secure)
-  Android apps (EL0)                 Trusted Applications (EL0 Secure)
-
-OP-TEE provides:
-  A scheduler for Trusted Applications
-  Secure storage API (encrypted with device key)
-  Cryptography API (AES, RSA, ECC, etc.)
-  Memory management for Secure World
-  A GlobalPlatform TEE API (standardised interface)
-
-Normal World calls OP-TEE via:
-  SMC instruction (Secure Monitor Call)
-  Goes through EL3 Secure Monitor
-  EL3 routes to OP-TEE OS in Secure World
-```
-
-### Trusted Application (TA)
-
-A Trusted Application is a small program that runs inside OP-TEE in the Secure World. Each TA handles one security-sensitive function.
-
-```
-Common Trusted Applications:
-
-Fingerprint TA:
-  Receives raw fingerprint sensor data directly
-  Runs matching algorithm inside Secure World
-  Returns only: "match" or "no match" to Normal World
-  Android never receives the biometric data
-
-Key Storage TA:
-  Generates cryptographic keys
-  Stores keys in secure storage (encrypted with device UID)
-  Performs crypto operations: sign, encrypt, decrypt
-  Keys never exported to Normal World
-
-Secure Boot TA:
-  Verifies signatures on firmware updates
-  Only accepts updates signed with manufacturer key
-  Normal World cannot bypass this check
-
-DRM TA:
-  Decrypts video content inside Secure World
-  Passes decrypted frames directly to display hardware
-  Normal World cannot capture decrypted video
-```
-
-### Apple Secure Enclave Processor (SEP) vs OP-TEE
-
-```
-OP-TEE (Android, most ARM devices):
-  Software TEE OS running on the main ARM cores in Secure World
-  TrustZone provides hardware isolation
-  Main AP cores switch between Normal/Secure World
-  Shared silicon with the application processor
-
-Apple SEP (iPhone, iPad):
-  Separate physical processor on the SoC die
-  Has its own ARM core, own RAM, own boot ROM
-  Runs sepOS (Apple's proprietary TEE OS)
-  Communicates with main AP via a restricted mailbox
-  Main AP cannot access SEP memory over any bus
-  Deeper hardware isolation than TrustZone alone
-
-Both hold:
-  Device UID key (burned in at manufacturing, never exported)
-  Biometric templates (fingerprint, face data)
-  Payment credentials
-  Cryptographic keys for storage encryption
-```
-
----
-
-## The Complete Flow — From Transistor to Running Program
-
-Now every piece can be connected into one continuous flow. This is the answer to "where does everything sit?"
-
-```
-LAYER 1 — PHYSICS (Chapter 01)
-  Electrons flowing or not through silicon
-  High voltage = 1, Low voltage = 0
-  One wire = one bit
-
-LAYER 2 — TRANSISTORS (Chapter 01)
-  Silicon switches controlled by voltage
-  On = 1, Off = 0
-  Billions on one chip
-  Organised into logic gates
-
-LAYER 3 — LOGIC GATES (Chapter 01)
-  AND, OR, NOT, NAND, NOR, XOR
-  Combine transistors to make decisions
-  Pattern detector circuits (AND gate + NOT gates)
-  This is the hardware level — pure physics
-
-LAYER 4 — FUNCTIONAL UNITS (Chapter 01)
-  Gates combined into: ALU, registers, control unit, decoder, RAM
-  The decoder: 256 AND-gate pattern detectors for 8-bit opcodes
-  The ALU: adder circuits made from XOR and AND gates
-  Registers: flip-flop arrays wired to ALU directly
-  RAM: grid of storage cells with address decoder
-  This is still hardware — no software yet
-
-LAYER 5 — INSTRUCTION SET ARCHITECTURE (Chapter 02)
-  CPU designer decides: which bit patterns do what
-  Documents this in the ISA manual (the opcode table)
-  Hardware team wires the decoder to match the table
-  The decoder IS the ISA in silicon form
-  This is the boundary between hardware design and software design
-
-LAYER 6 — MACHINE CODE (Chapter 02, 06)
-  Raw binary bytes that the decoder recognises
-  The ONLY language the CPU actually executes
-  Everything above must eventually become machine code
-  Machine code lives in memory (RAM or cache)
-  The CPU fetches it, the decoder decodes it, the ALU executes it
-  This is the lowest software layer — bytes in memory
-
-LAYER 7 — ASSEMBLY LANGUAGE (Chapter 02, 06)
-  Human-readable names for machine code instructions
-  MOV, ADD, JMP, SYSCALL — mnemonics mapped 1:1 to opcodes
-  The ASSEMBLER (software tool) translates mnemonics to bytes
-  Assembly is a TEXT FORMAT living on disk (source file)
-  The assembler reads text, outputs binary machine code
-  This is a SOFTWARE TOOL layer, not a hardware layer
-
-LAYER 8 — THE C LANGUAGE AND COMPILER (Chapter 06)
-  Higher abstraction — types, functions, control flow
-  The COMPILER (software tool, e.g. GCC) translates C to assembly
-  Then the internal assembler translates assembly to machine code
-  C source lives on disk as text
-  The compiler runs on the CPU, reads text, produces binary
-  This is another SOFTWARE TOOL layer
-
-LAYER 9 — THE ELF BINARY (Chapter 06)
-  The compiled machine code wrapped in a container format
-  Contains: code section, data section, symbol table, metadata
-  Lives on disk as a file
-  The kernel loads it into RAM when you execute the program
-  Page tables map the ELF sections to virtual addresses
-
-LAYER 10 — THE OPERATING SYSTEM KERNEL (Chapters 03, 08-11)
-  Manages: processes, memory, file systems, devices, network
-  Lives in ring 0 (kernel mode)
-  System calls are the gate: ring 3 -> ring 0 -> ring 3
-  The kernel is itself a compiled C program loaded at boot
-
-LAYER 11 — USERSPACE PROGRAMS (Chapters 08-13)
-  Your programs, shells, daemons, servers
-  Run in ring 3 (user mode)
-  Use system calls to ask kernel for resources
-  Each has a virtual address space (page tables map virtual->physical)
-  Page faults handled transparently by kernel
-
-LAYER 12 — HIGH-LEVEL LANGUAGES AND RUNTIMES (Chapter 06)
-  Python, Java, JavaScript
-  Interpreted: interpreter (itself a compiled binary) reads source
-  JIT compiled: JIT compiler generates machine code at runtime
-  All ultimately produce machine code that runs on the CPU
-
-LAYER 13 — FORMAL LANGUAGES AND AUTOMATA (Chapter 05)
-  This layer is THEORETICAL — it describes and constrains tools
-  Regular expressions: described by finite automata (theoretical model)
-  Context-free grammars: described by pushdown automata
-  Used by: compiler lexers (regex/DFA), parsers (CFG/PDA)
-  Formal languages explain WHY certain tools work and others cannot
-  NOT a hardware layer — a mathematical framework for tool design
-```
-
-### Where Each Tool Sits
-
-```
-HARDWARE (silicon, gates, decoder, ALU, registers, RAM):
-  Transistors    -> physics
-  Logic gates    -> gate circuits
-  Decoder        -> pattern detector AND gates in control unit
-  ALU            -> combinational logic for arithmetic
-  Registers      -> flip-flop arrays wired to ALU
-  RAM            -> storage grid with address decoder
-  MMU            -> address translation hardware
-  TLB            -> translation cache hardware
-  Cache          -> fast SRAM close to CPU cores
-
-FIRMWARE (between hardware and software):
-  BIOS/UEFI      -> machine code in ROM chips, runs before OS
-  Microcode      -> internal micro-operations in modern CPUs
-                   translates x86-64 opcodes to internal uops
-
-SOFTWARE TOOLS (programs that run on the CPU to build other programs):
-  Assembler      -> reads assembly TEXT, outputs MACHINE CODE binary
-                   e.g. nasm, gas, as
-                   sits at: software level, produces layer 6 output
-  Compiler       -> reads C/C++/Rust TEXT, outputs MACHINE CODE binary
-                   e.g. GCC, Clang
-                   sits at: software level, produces layer 6 output
-  Linker         -> combines multiple machine code objects into one binary
-                   e.g. ld
-  Debugger       -> reads running machine code, shows human-readable state
-                   e.g. gdb, pwndbg
-
-THE OPERATING SYSTEM:
-  Kernel         -> ring 0, manages all hardware resources
-  System calls   -> the gate between ring 3 and ring 0
-  Scheduler      -> decides which process runs on which CPU core
-  VM manager     -> manages page tables, handles page faults
-  VFS            -> unified file interface (Chapter 08)
-
-RUNTIME ENVIRONMENTS:
-  glibc          -> C standard library, wraps system calls
-  Python runtime -> interpreter + garbage collector
-  JVM            -> Java Virtual Machine
-  ART            -> Android Runtime (DEX -> ARM64 AOT)
-
-FORMAL LANGUAGE THEORY (mathematics — not a software layer):
-  Describes: what patterns finite automata can recognise
-  Used by:   compiler designers when building lexers and parsers
-  Manifests as: regex engines (software), parser generators (software)
-  Does NOT run on hardware — it is a mathematical framework
-```
-
-### The Terminal and Assembler Distinction
-
-You asked specifically about the difference between terminals and assemblers in terms of converting human-readable input to machine code:
-
-```
-TERMINAL:
-  Role:    input/output device
-  Converts: keystrokes -> ASCII bytes -> sends to whatever program is running
-  Converts: bytes received from program -> characters displayed on screen
-  Does NOT: interpret commands, understand assembly, produce machine code
-  Sits at:  Layer 4 hardware era (ASR-33) or Layer 11 software era (PTY)
-  Knows about: bytes, character encoding, display control sequences
-  Does NOT know: opcodes, registers, machine code, programming languages
-
-ASSEMBLER:
-  Role:    translation tool (software program)
-  Converts: assembly source text -> machine code binary
-  Input:   text file containing mnemonic instructions (MOV, ADD, JMP)
-  Output:  binary file containing raw opcode bytes
-  Sits at:  Layer 7 (software tool)
-  Knows about: opcodes, instruction encoding, registers, addressing modes
-  Does NOT know: display, input handling, user interaction
-
-HOW THEY INTERACT HISTORICALLY:
-  1. Programmer types assembly source on teletype/terminal
-  2. Terminal sends ASCII bytes to the computer
-  3. Computer stores the bytes as a text file
-  4. Programmer runs the assembler program
-  5. Assembler reads the text file
-  6. Assembler looks up each mnemonic in its opcode table
-  7. Assembler outputs binary machine code
-  8. Machine code is loaded and executed by the CPU's decoder
-
-The terminal is the I/O interface.
-The assembler is the translation tool.
-Neither is the other. They never overlap.
-The terminal never sees opcodes.
-The assembler never handles display or input.
-```
-
-
-
----
-
--e 
----
-
-# Chapter 3: Memory Addresses, Pages, Virtual Memory and the Hardware-Software Map
-
-This chapter exists because the previous chapters introduced concepts that need to be grounded more precisely. Every term used loosely elsewhere is defined exactly here. Read this chapter before Chapter 04 and every reference in later chapters will be fully clear.
-
----
-
-## What Is a Page — The Unit of Memory Management
-
-A **page** is a fixed-size block of memory. It is the fundamental unit the operating system uses to manage memory. Everything about virtual memory, page tables, page faults, and memory protection operates in units of pages — never individual bytes.
-
-### Why Pages Exist
-
-Managing memory byte by byte would require enormous data structures. A system with 8GB of RAM has 8 billion bytes. If the OS tracked permissions and mappings for every individual byte, the page table alone would consume all of RAM. Instead, the OS groups bytes into pages and tracks permissions per page.
-
-### Page Size
-
-On x86-64 and ARM64, the standard page size is **4096 bytes (4 KB)**. This is fixed by the CPU architecture. Every page starts at an address divisible by 4096.
-
-```
-4096 bytes = 4 KB = one page
-
-Page boundaries:
-  Address 0x00000000 to 0x00000FFF = page 0     (4096 bytes)
-  Address 0x00001000 to 0x00001FFF = page 1     (4096 bytes)
-  Address 0x00002000 to 0x00002FFF = page 2     (4096 bytes)
-  ...
-
-Any address split into two parts:
-  Page number = address >> 12    (upper bits identify which page)
-  Page offset = address & 0xFFF  (lower 12 bits = position within page)
-
-Example: address 0x00401A34
-  Page number: 0x00401A34 >> 12 = 0x401      (page 1025)
-  Page offset: 0x00401A34 & 0xFFF = 0xA34    (byte 2612 within the page)
-```
-
-### Three Distinct Page Concepts
-
-These three terms are related but different:
-
-```
-VIRTUAL PAGE:
-  A 4KB block in a process's virtual address space
-  Identified by a virtual page number
-  May or may not have physical RAM backing it
-  Exists in the address space even when not in RAM
-  Example: page at virtual address 0x401000
-
-PHYSICAL PAGE (also called PAGE FRAME):
-  A 4KB block of actual physical RAM chips
-  Identified by a physical frame number (PFN)
-  What the RAM physically contains
-  A finite resource — you only have as many as you have RAM
-  Example: physical frame at address 0x3A000 in RAM
-
-PAGE TABLE ENTRY (PTE):
-  The mapping connecting one virtual page to one physical frame
-  Contains: physical frame number + permission flags
-  Stored in RAM (in kernel-controlled memory)
-  Managed by the kernel, read by the MMU hardware
-```
-
-```
-How they connect:
-
-Process virtual address space:        Physical RAM:
-  Virtual page 0  ─────────────────►  Physical frame 47
-  Virtual page 1  ─────────────────►  Physical frame 123
-  Virtual page 2  ─────────────────►  (not in RAM — on disk)
-  Virtual page 3  ─────────────────►  Physical frame 8
-  ...                                 ...
-
-Page table (in RAM, managed by kernel):
-  Entry for vpage 0: PFN=47, Present=1, RW=1, User=1
-  Entry for vpage 1: PFN=123, Present=1, RW=0, User=1
-  Entry for vpage 2: Present=0  <- page is on disk, not in RAM
-  Entry for vpage 3: PFN=8, Present=1, RW=1, User=0
-```
-
-### Where Pages Physically Live
-
-```
-Virtual pages:   in the concept space — they are numbers in a mapping
-                 They have no physical existence by themselves
-
-Physical frames: inside the RAM chips on the motherboard
-                 (or on-package RAM for mobile — LPDDR)
-                 4KB blocks within the DRAM grid
-
-Page tables:     in physical RAM, in a region the kernel controls
-                 The kernel allocates physical frames to hold page tables
-                 These frames are marked kernel-only (U/S=0)
-                 The process cannot read its own page table
-
-Swap:            on the storage device (SSD or HDD)
-                 When RAM is full, the kernel moves physical frames
-                 to the swap partition/file to free RAM for other uses
-                 The page table entry is updated: Present=0, location=swap
-```
-
-### The Full Picture — Where a Variable Lives
-
-When your C program declares `int x = 5;`:
-
-```
-Source code (text file on disk):
-  int x = 5;
-
-After compilation (ELF binary on disk):
-  .data section contains: 05 00 00 00 (4 bytes, little-endian)
-
-After program starts (in RAM):
-  Kernel loads ELF into memory
-  Virtual page at address 0x601000 maps to physical frame 234
-  Physical frame 234 in RAM contains: 05 00 00 00 at some offset
-  Page table entry for virtual page 0x601: PFN=234, present=1
-
-When your code reads x:
-  CPU generates virtual address, e.g. 0x601008
-  MMU splits: page 0x601, offset 0x008
-  MMU looks up page 0x601 in TLB -> hit -> physical frame 234
-  Physical address: 234 * 4096 + 8 = 0xEA008
-  Memory controller reads 4 bytes from RAM address 0xEA008
-  Returns 0x00000005 to the CPU register
-
-When the program exits:
-  Kernel marks physical frame 234 as free
-  The page table for this process is deleted
-  Physical frame 234 can now be given to another process
-  The variable x is gone
-```
-
----
-
-## What Is the Kernel — Precise Definition
-
-The **kernel** is the core of an operating system. It is a compiled C program that runs in ring 0 (CPU privilege level 0) and manages all hardware resources on behalf of user programs.
-
-The kernel is NOT the entire operating system. It is the privileged core component.
-
-### What the Kernel Actually Contains
-
-```
-The Linux kernel is a single large program. Inside it:
-
-┌─────────────────────────────────────────────────────────────┐
-│                      LINUX KERNEL                           │
-│                                                             │
-│  Process Scheduler                                          │
-│    Decides which process runs on which CPU core             │
-│    Switches between processes (context switching)           │
-│    Implements: CFS (Completely Fair Scheduler)              │
-│                                                             │
-│  Memory Manager                                             │
-│    Allocates and frees physical frames                      │
-│    Creates and destroys page tables                         │
-│    Handles page faults                                      │
-│    Manages swap (moving pages to/from disk)                 │
-│    Implements: buddy allocator, slab allocator              │
-│                                                             │
-│  Virtual Filesystem (VFS)                                   │
-│    Unified interface over all filesystem types              │
-│    Implements: file descriptors, inodes, directory entries  │
-│    Plugs in: ext4, xfs, btrfs, tmpfs, procfs, sysfs        │
-│                                                             │
-│  Network Stack                                              │
-│    Implements: TCP/IP, UDP, routing, netfilter/iptables     │
-│    Socket interface (Chapter 13)                            │
-│    Network device drivers                                   │
-│                                                             │
-│  Device Drivers                                             │
-│    Code that talks directly to hardware                     │
-│    Storage drivers (NVMe, SATA, USB mass storage)           │
-│    Network drivers (Ethernet, WiFi)                         │
-│    GPU drivers (DRM/KMS)                                    │
-│    Input drivers (keyboard, mouse, touchscreen)             │
-│                                                             │
-│  Interrupt Handler                                          │
-│    Responds to hardware interrupts (Chapter 17)             │
-│    Routes interrupts to correct driver                      │
-│                                                             │
-│  System Call Interface                                      │
-│    The gate from ring 3 to ring 0                           │
-│    ~400 system calls (open, read, write, fork, exec...)     │
-│                                                             │
-│  Security Subsystem                                         │
-│    SELinux, AppArmor, seccomp, capabilities                 │
-│    Namespace isolation (containers)                         │
-│                                                             │
-│  Inter-Process Communication (IPC)                          │
-│    Pipes, signals, shared memory, message queues            │
-│    Unix domain sockets                                      │
-└─────────────────────────────────────────────────────────────┘
-```
-
-The kernel lives in memory at all times. When you boot Linux, the kernel is loaded into RAM and stays there until shutdown. It occupies roughly 10-100MB of RAM depending on loaded modules.
-
-### What Is a Kernel Module
-
-The kernel has a monolithic core but many parts are loadable as **modules** — chunks of kernel code that can be loaded and unloaded at runtime without rebooting:
-
-```bash
-# See loaded kernel modules
-lsmod
-
-# Load a module
-sudo modprobe nvidia          # load NVIDIA GPU driver
-
-# Unload a module
-sudo modprobe -r nouveau      # unload nouveau driver
-
-# See where the kernel lives in memory
-cat /proc/iomem | grep "Kernel"
-
-# See kernel version
-uname -r
-# 6.5.0-28-generic
-
-# The kernel binary on disk
-ls -lh /boot/vmlinuz-$(uname -r)
-```
-
----
-
-## What Is the Operating System — Kernel vs OS
-
-The **operating system** is a broader concept than the kernel. The OS includes everything that makes the computer usable:
-
-```
-OPERATING SYSTEM (the full stack):
-  ┌──────────────────────────────────────────────┐
-  │  User-facing software                        │
-  │  Desktop environment, GUI, apps              │
-  │  (GNOME, KDE, Windows Explorer, Finder)      │
-  ├──────────────────────────────────────────────┤
-  │  System utilities and tools                  │
-  │  Shell (bash, zsh), coreutils (ls, cp, mv)  │
-  │  Package manager, init system (systemd)      │
-  │  Network manager, display manager            │
-  ├──────────────────────────────────────────────┤
-  │  System libraries                            │
-  │  glibc (C standard library)                  │
-  │  libpthread, libssl, libz, etc.              │
-  ├──────────────────────────────────────────────┤
-  │  KERNEL ← this is the privileged core only  │
-  │  Runs in ring 0                              │
-  │  Everything above runs in ring 3             │
-  └──────────────────────────────────────────────┘
-
-Linux = the kernel only (Linus Torvalds created this)
-GNU/Linux = kernel + GNU userspace tools
-Ubuntu/Pop!_OS/Debian = kernel + GNU tools + package manager + desktop
-Android = Linux kernel + Android middleware + ART + Google apps
-macOS = XNU kernel + BSD userland + Apple frameworks + GUI
-```
-
-### The Precise Answer — Kernel vs OS at Ring 0
-
-```
-RING 0 (kernel mode) contains ONLY:
-  The kernel itself
-  Kernel modules (device drivers)
-  Nothing else — no exceptions
-
-RING 3 (user mode) contains:
-  Everything else:
-    glibc (C standard library)
-    bash, zsh (shells)
-    systemd (init system)
-    GNOME, KDE (desktop environments)
-    Every application you run
-    Even "system" programs like ps, top, ifconfig
-    Even privileged tools like sudo (which uses setuid to briefly escalate)
-
-The OS = kernel (ring 0) + everything above it (ring 3)
-The kernel = only the ring 0 part
-```
-
-This answers your question directly: **No, the OS does not all live at ring 0. Only the kernel does. The rest of the OS — shells, daemons, system utilities — all run in ring 3 and use system calls to ask the kernel for privileged operations.**
-
-```bash
-# Prove this: check what runs in kernel vs user space
-ps aux | head -5
-# PID USER ... COMMAND
-# Everything shown by ps is a userspace process (ring 3)
-# The kernel itself does not appear as a process in ps
-# Kernel threads appear with brackets: [kworker/0:1]
-
-# See kernel threads (kernel code running in its own scheduling context)
-ps aux | grep -E "^\S+\s+[0-9]+.*\[.*\]"
-# [kthreadd], [migration/0], [kworker/...], [ksoftirqd/0]
-# These are kernel threads — ring 0 code, not user processes
-```
-
----
-
-## The MMU — Where It Lives in Hardware
-
-The **MMU (Memory Management Unit)** is a hardware component. It is NOT software. It is silicon on the CPU die.
-
-### Physical Location
-
-```
-Inside the CPU die:
-
-┌─────────────────────────────────────────────────────┐
-│                     CPU DIE                         │
-│                                                     │
-│  ┌──────────┐  ┌──────────┐  ┌──────────────────┐  │
-│  │  Core 0  │  │  Core 1  │  │     Core 2       │  │
-│  │  ┌────┐  │  │  ┌────┐  │  │  ┌────┐          │  │
-│  │  │ALU │  │  │  │ALU │  │  │  │ALU │          │  │
-│  │  └────┘  │  │  └────┘  │  │  └────┘          │  │
-│  │  ┌────┐  │  │  ┌────┐  │  │  ┌────┐          │  │
-│  │  │ L1 │  │  │  │ L1 │  │  │  │ L1 │          │  │
-│  │  │cache│ │  │  │cache│ │  │  │cache│          │  │
-│  │  └────┘  │  │  └────┘  │  │  └────┘          │  │
-│  │  ┌────┐  │  │  ┌────┐  │  │  ┌────┐          │  │
-│  │  │MMU │◄─┼──┼──│MMU │  │  │  │MMU │          │  │
-│  │  │+TLB│  │  │  │+TLB│  │  │  │+TLB│          │  │
-│  │  └────┘  │  │  └────┘  │  │  └────┘          │  │
-│  └──────────┘  └──────────┘  └──────────────────┘  │
-│                                                     │
-│  ┌─────────────────────────────────────────────┐    │
-│  │           Shared L3 Cache                   │    │
-│  └─────────────────────────────────────────────┘    │
-│                                                     │
-│  ┌─────────────────────────────────────────────┐    │
-│  │        Memory Controller                    │    │
-│  │  (connects CPU die to RAM chips)            │    │
-│  └─────────────────────────────────────────────┘    │
-└─────────────────────────────────────────────────────┘
-         │
-         │ memory bus
-         ▼
-   RAM chips (separate from CPU)
-```
-
-Each CPU core has its own MMU and TLB. The MMU sits between the core's cache and the memory controller. Every memory access from any instruction goes through the MMU before it reaches the cache or RAM.
-
-### What the MMU Does in Hardware
-
-The MMU is a combinational and sequential logic circuit (from Chapter 01) that:
-
-1. Receives a virtual address from the CPU core
-2. Checks the TLB (a small associative cache built from SRAM) for a cached translation
-3. If TLB hit: outputs physical address immediately (1-2 cycles)
-4. If TLB miss: performs a page table walk (reading from RAM, 100s of cycles)
-5. Checks permission flags in the page table entry
-6. If access is forbidden: raises a page fault exception
-7. If access is allowed: passes physical address to the cache/memory controller
-
-The kernel configures the MMU by writing the page table's physical address into the CR3 register (x86-64) or TTBR0/TTBR1 (ARM64). After that, the MMU operates completely autonomously in hardware — no kernel code runs during normal address translation.
-
-```bash
-# Kernel sets CR3 on every context switch (process switch)
-# You can see context switches happening:
-vmstat 1 5
-# cs column = context switches per second
-# Each context switch involves writing a new value to CR3
-```
-
----
-
-## System Calls vs Function Calls — The Precise Difference
-
-These look similar in source code but are completely different mechanisms at the hardware level.
-
-### Function Calls — Staying in the Same Ring
-
-A function call stays entirely within the same privilege level. It uses the stack and the call instruction.
-
-```c
-// Function call — everything in ring 3
-int result = add(5, 3);
-
-// What the CPU does:
-// 1. Evaluate arguments (5 and 3)
-// 2. Push return address onto the stack
-// 3. Jump to add() function's code
-// 4. add() executes (still in ring 3)
-// 5. add() executes RET instruction
-// 6. CPU pops return address from stack
-// 7. CPU jumps back to the instruction after the call
-// 8. result = return value from RAX register
-
-// All of this happens in ring 3
-// No privilege change
-// No kernel involvement
-// No CPU mode switch
-// Just a jump with a saved return address
-```
-
-In assembly:
-```asm
-; Calling add(5, 3) — pure ring 3 operation
-mov edi, 5          ; first argument
-mov esi, 3          ; second argument
-call add            ; push RIP+1 to stack, jump to add
-; ... add executes and returns ...
-; result now in EAX
-```
-
-### System Calls — Crossing the Ring Boundary
-
-A system call crosses from ring 3 to ring 0. It uses the `SYSCALL` instruction (x86-64) or `SVC` (ARM64).
-
-```c
-// System call — crosses ring boundary
-ssize_t bytes = write(1, "hello", 5);
-
-// What glibc does:
-// 1. Places syscall number (1 = write) in RAX
-// 2. Places arguments in RDI, RSI, RDX
-// 3. Executes SYSCALL instruction
-
-// What SYSCALL instruction does in hardware:
-// 1. CPU saves current RIP and RFLAGS
-// 2. CPU reads LSTAR register (kernel set this at boot)
-// 3. CPU atomically changes CPL from 3 to 0
-// 4. CPU jumps to LSTAR address (kernel's syscall entry)
-
-// Kernel executes (in ring 0):
-// 1. Saves all user registers
-// 2. Reads syscall number from RAX (= 1 = write)
-// 3. Validates arguments (is fd 1 valid? is buffer accessible?)
-// 4. Performs write (calls kernel's write implementation)
-// 5. Places return value in RAX
-// 6. Executes SYSRET instruction
-
-// SYSRET instruction does in hardware:
-// 1. CPU atomically changes CPL from 0 to 3
-// 2. CPU restores RIP and RFLAGS
-// 3. User program resumes
-```
-
-### Side by Side Comparison
-
-```
-                    Function Call              System Call
-                    ─────────────────          ───────────────────────
-Instruction:        CALL (x86) / BL (ARM)      SYSCALL (x86) / SVC (ARM)
-Ring change:        none (stays ring 3)        ring 3 -> ring 0 -> ring 3
-Stack used:         user stack                 switches to kernel stack
-Destination:        any address in text        fixed LSTAR/VBAR address
-                    segment                    (kernel controls this)
-Entry point:        wherever you call to       only one entry point
-                    (can be any function)      (kernel's syscall handler)
-Time cost:          ~1 nanosecond              ~100-300 nanoseconds
-What executes:      your code or library code  kernel code
-Can access:         your process's memory      all memory (ring 0)
-Example:            printf(), malloc(), add()  write(), open(), fork()
-Interceptable:      only with debugging tools  glibc wraps them
-```
-
-```bash
-# Count function calls: cannot easily count (too many, too fast)
-
-# Count system calls: strace does this
-strace -c ls
-# Shows every system call with count, time, errors
-# openat, read, write, close, mmap, etc.
-
-# See that function calls are NOT system calls
-strace -c bash -c 'x=$((5+3)); echo $x'
-# The arithmetic $((5+3)) makes ZERO system calls
-# It is all done by the CPU executing instructions in ring 3
-# Only the echo causes system calls (write())
-```
-
----
-
-## BRE, ERE and PCRE — The Three Regex Flavours
-
-These are three different standards for regular expression syntax. They differ in which metacharacters are special and which require escaping.
-
-### BRE — Basic Regular Expressions (POSIX 1986)
-
-The original POSIX standard. Deliberately conservative — most metacharacters must be **escaped to be special**.
-
-```
-BRE metacharacters (special WITHOUT escaping):
-  .     any character
-  *     zero or more of previous
-  ^     start of line
-  $     end of line
-  []    character class
-
-BRE metacharacters (special ONLY WITH backslash):
-  \+    one or more (NOT just + alone)
-  \?    zero or one
-  \|    alternation
-  \(\)  grouping
-  \{n\} repetition count
-
-Examples in BRE:
-  grep 'a*b' file        <- zero or more a followed by b
-  grep 'a\+b' file       <- one or more a followed by b (needs \+)
-  grep 'cat\|dog' file   <- cat or dog (needs \|)
-
-Tools that use BRE by default:
-  grep (without -E)
-  sed (without -E or -r)
-  ed
-```
-
-### ERE — Extended Regular Expressions (POSIX 1986)
-
-More intuitive — metacharacters are special WITHOUT backslash. Backslash REMOVES their special meaning.
-
-```
-ERE metacharacters (special WITHOUT escaping):
-  .     any character
-  *     zero or more
-  +     one or more
-  ?     zero or one
-  |     alternation
-  ()    grouping
-  {}    repetition count
-  ^     start of line
-  $     end of line
-  []    character class
-
-Examples in ERE:
-  grep -E 'a+b' file        <- one or more a followed by b
-  grep -E 'cat|dog' file    <- cat or dog
-  grep -E '(ab)+' file      <- one or more "ab"
-  grep -E '[0-9]{3}' file   <- exactly 3 digits
-
-Tools that use ERE:
-  grep -E (or egrep)
-  sed -E (or sed -r)
-  awk (uses ERE natively)
-```
-
-### PCRE — Perl-Compatible Regular Expressions (1994)
-
-Created by Philip Hazel implementing Perl's regex engine as a library. Goes beyond both BRE and ERE with features that technically exceed regular language power.
-
-```
-PCRE adds beyond ERE:
-  (?:...)    non-capturing group (ERE () always captures)
-  (?=...)    positive lookahead
-  (?!...)    negative lookahead
-  (?<=...)   positive lookbehind
-  (?<!...)   negative lookbehind
-  \d         digit (same as [0-9])
-  \D         non-digit
-  \w         word char [a-zA-Z0-9_]
-  \W         non-word char
-  \s         whitespace
-  \S         non-whitespace
-  \b         word boundary
-  \1, \2     backreferences (capture group references)
-  (?P<name>) named capture groups
-  (?i)       inline flags (case insensitive)
-
-Examples:
-  grep -P '\d{3}-\d{4}' file    <- phone number pattern
-  grep -P '(?i)error' file      <- case-insensitive
-  grep -P '(?<=GET )\S+' file   <- lookbehind: URL after GET
-  grep -P '\b\w+\b' file        <- word boundaries
-
-Tools using PCRE:
-  grep -P
-  Python re module
-  JavaScript RegExp
-  PHP preg_* functions
-  .NET Regex class
-  Java java.util.regex
-  Most modern languages
-```
-
-### Quick Reference — Which to Use When
-
-```
-Use BRE (default grep, sed):
-  Simple patterns, maximum compatibility
-  grep 'pattern' file
-  sed 's/old/new/g' file
-
-Use ERE (-E flag):
-  More complex patterns without backslash clutter
-  grep -E 'pat1|pat2' file
-  sed -E 's/(group1)(group2)/\2\1/' file
-
-Use PCRE (-P flag):
-  Lookahead/lookbehind, named groups, \d \w \s shortcuts
-  Security work: credential scanning, log parsing
-  grep -P '(?i)password\s*[:=]\s*\S+' file
-
-Cannot use regex at all:
-  Nested/balanced structures (HTML, JSON, XML)
-  Use a proper parser instead
-```
-
----
-
-## The Complete Hardware vs Software Map
-
-Every concept in this document lives at exactly one layer. This section places everything precisely.
-
-### Layer 0 — Physics
-
-```
-What:     Electrons flowing through semiconductor material
-Where:    Inside the silicon wafer of the CPU and RAM chips
-Examples: Voltage high (1), voltage low (0)
-Is it:    Hardware — pure physics, no design choices beyond material science
-```
-
-### Layer 1 — Transistors
-
-```
-What:     Silicon switches controlled by voltage (MOSFET transistors)
-Where:    Etched into the silicon die at nanometre scale (3nm, 5nm, 7nm)
-Examples: NMOS transistor, PMOS transistor, FinFET
-Is it:    Hardware — physical devices
-Count:    Billions per chip (Apple M2: 20 billion, AMD EPYC: 100 billion)
-```
-
-### Layer 2 — Logic Gates
-
-```
-What:     Transistors wired together to implement boolean logic
-Where:    Inside the CPU die — groups of 2-6 transistors per gate
-Examples: AND, OR, NOT, NAND, NOR, XOR gates
-Is it:    Hardware — circuits, not software
-Function: Take binary inputs, produce binary output by a fixed rule
-```
-
-### Layer 3 — Functional Units
-
-```
-What:     Gates combined into components with specific functions
-Where:    Inside the CPU die
-Examples:
-  ALU (Arithmetic Logic Unit):
-    Built from adder circuits (XOR+AND for sum+carry)
-    Multiplexer selects which operation to perform
-    Produces result + flags (Zero, Carry, Overflow, Sign)
-
-  Registers:
-    Built from D flip-flops (arrays of 64 flip-flops for 64-bit)
-    Located directly adjacent to ALU (wired connection, 0 cycles)
-    x86-64: RAX,RBX,RCX,RDX,RSI,RDI,RSP,RBP,R8-R15 + RIP,RFLAGS
-
-  Control Unit + Decoder:
-    Pattern detector AND gates (one per opcode)
-    Translates opcode bits -> control signals -> activates right circuit
-    The ISA in silicon form
-
-  MMU (Memory Management Unit):
-    Address translation hardware (virtual->physical)
-    Contains TLB (Translation Lookaside Buffer — SRAM cache)
-    Checks page permission flags on every access
-    Raises page fault exception when access is forbidden
-    Located: inside each CPU core, between cache and memory controller
-
-  Cache (L1, L2, L3):
-    SRAM cells (faster than DRAM, more expensive)
-    L1: inside each core (32-64KB, split I-cache and D-cache)
-    L2: per-core or shared (256KB-1MB)
-    L3: shared across all cores (8-64MB)
-    Managed by hardware cache controller automatically
-    Software cannot directly control what is cached
-
-  Clock:
-    Crystal oscillator circuit
-    Synchronises all circuits to a fixed frequency
-    3-5 GHz on modern desktop CPUs
-    0.1-2 GHz on efficiency cores (mobile)
-
-Is it: Hardware — all pure silicon circuits
-```
-
-### Layer 4 — RAM (Main Memory)
-
-```
-What:     DRAM cells — capacitors that hold charge representing bits
-Where:    Separate chips on the motherboard (desktop)
-          On-package next to SoC die (mobile — LPDDR)
-Access:   Via memory controller -> memory bus -> DRAM chips
-Speed:    100-300 CPU cycles per access
-Contents: Everything currently in use by all running programs:
-          Kernel code and data
-          All process code, stack, heap, globals
-          Page tables (in kernel-controlled region)
-          File system buffers (disk cache)
-          Network buffers
-
-Is it:    Hardware (DRAM chips) + organised by software (kernel)
-          The hardware is the chips
-          The organisation (which frames hold what) is managed by kernel
-```
-
-### Layer 5 — Firmware
-
-```
-What:     Machine code stored in ROM/flash chips, not in RAM
-Where:    ROM chip on motherboard (BIOS/UEFI)
-          ROM in mobile chips (BootROM inside SoC)
-          Microcode storage inside CPU (Intel/AMD internal)
-Examples:
-  BIOS/UEFI: startup firmware, hardware initialisation, boot device search
-  Microcode:  x86-64 instruction-to-uop translation inside modern CPUs
-              Updates delivered via CPU firmware updates
-  BootROM:    immutable first-stage bootloader in mobile chips
-              Verifies next stage signature before executing
-
-Is it:    Firmware — between hardware and software
-          Code (software) but stored in read-only hardware
-          Cannot be changed without specialised tools (or at all for ROM)
-```
-
-### Layer 6 — Machine Code
-
-```
-What:     Raw binary bytes that the CPU decoder recognises as instructions
-Where:    Stored in ELF binary files on disk
-          Loaded into RAM when program executes
-          Fetched into instruction cache (L1 I-cache) by the CPU
-          Decoded by the control unit's decoder circuit
-Examples: 0x48 0x89 0xC3 (MOV RBX, RAX on x86-64)
-          0x8B 0x02 0x00 0x00 (ADD X0, X0, X1 on ARM64)
-
-Is it:    Software (bytes in files and memory)
-          BUT executed directly by hardware (no interpreter)
-          The ONLY format the CPU natively understands
-          Everything above must eventually become machine code
-```
-
-### Layer 7 — Assembly Language
-
-```
-What:     Human-readable text representation of machine code
-Where:    Text files on disk (.asm, .s source files)
-          In programmer's head and documentation
-          In disassembler output (objdump, gdb, ghidra)
-Examples: MOV RBX, RAX
-          ADD X0, X0, X1
-          SYSCALL
-          JZ label
-
-Is it:    Software (text) — NOT hardware
-          Requires an ASSEMBLER to convert to machine code
-
-ASSEMBLER (the tool):
-  What:   Software program that reads assembly text -> outputs machine code
-  Where:  Runs on the CPU like any other program (ring 3)
-  Examples: nasm, gas (GNU assembler), masm, yasm
-  Sits at: Layer 7 software tool
-  Input:  assembly text files
-  Output: object files (.o) containing machine code
-  Does NOT touch hardware directly
-  Does NOT need a terminal (can take file input)
-```
-
-### Layer 8 — C and Compiled Languages
-
-```
-What:     High-level language with types, functions, control flow
-Where:    Text files on disk (.c, .cpp, .rs, .go source files)
-Examples: int x = 5 + 3;
-          printf("hello\n");
-
-Is it:    Software (text) — NOT hardware
-
-COMPILER (the tool):
-  What:   Software program that reads C -> outputs machine code
-  Where:  Runs on the CPU like any other program (ring 3)
-  Examples: GCC (GNU Compiler Collection), Clang, rustc
-  Sits at: Layer 8 software tool
-  Input:  C source files
-  Output: Object files (.o), then linked into ELF binaries
-  Internal steps: C -> AST -> IR -> assembly -> machine code
-  Does NOT touch hardware directly
-
-LINKER (the tool):
-  What:   Combines multiple .o files into one executable
-  Examples: ld (GNU linker)
-  Produces: ELF binary (executable file)
-```
-
-### Layer 9 — The Operating System Kernel
-
-```
-What:     Compiled C program that manages hardware for all user processes
-Where:    Loaded into RAM at boot, stays there permanently
-          Runs in ring 0 (CPU privilege level 0)
-          Has its own virtual address space region (upper half on x86-64)
-Examples: Linux kernel, XNU (macOS/iOS), NT kernel (Windows)
-          OP-TEE (Secure World TEE OS)
-          sepOS (Apple Secure Enclave OS)
-
-Is it:    Software running in ring 0
-          Can directly access all hardware (no MMU restriction)
-          Can execute all CPU instructions including privileged ones
-
-Kernel subsystems (all software, all ring 0):
-  Process scheduler
-  Memory manager (manages page tables, frames, swap)
-  Virtual filesystem (VFS)
-  Network stack (TCP/IP, socket layer)
-  Device drivers (talk to hardware via I/O ports and memory-mapped I/O)
-  System call handler (the SYSCALL entry point)
-  Interrupt handler
-  Security subsystem (SELinux, AppArmor, namespaces)
-```
-
-### Layer 10 — System Libraries and Userspace OS Components
-
-```
-What:     Programs and libraries that run in ring 3 but provide
-          OS-like services to applications
-Where:    ELF shared libraries (.so files) loaded into process memory
-          Daemon processes running as root or system users
-
-Examples:
-  glibc (libc.so):
-    C standard library — wraps system calls in C functions
-    printf() -> write() system call
-    malloc() -> brk()/mmap() system calls
-    pthread_create() -> clone() system call
-    Sits at: ring 3, loaded into every C program
-    Is NOT part of the kernel
-
-  libpthread: POSIX threads implementation
-  libssl/libcrypto (OpenSSL): cryptography library
-  libcurl: HTTP client library
-
-  systemd (PID 1):
-    First userspace process (init system)
-    Manages other services
-    Runs in ring 3 with elevated privileges via capabilities
-    Is NOT the kernel — it is a ring 3 program
-
-  udev: device event manager (ring 3)
-  NetworkManager: network configuration (ring 3)
-  dbus: inter-process communication bus (ring 3)
-
-Is it:    Software in ring 3
-          Uses system calls to request kernel services
-          NOT privileged hardware access
-```
-
-### Layer 11 — Applications
-
-```
-What:     User programs that accomplish specific tasks
-Where:    ELF binaries on disk, loaded into RAM to execute
-Examples: bash, vim, nginx, postgres, python3, your programs
-Ring:     Ring 3 — cannot directly access hardware
-Access:   Via system calls -> kernel -> hardware
-
-Shells specifically:
-  bash, zsh, fish — ring 3 programs
-  Read commands from stdin (terminal, file, pipe, socket)
-  Fork and exec child processes
-  Never touch hardware directly
-  Use write() system call to print to terminal
-  Use read() system call to receive input
-
-Is it:    Software in ring 3
-```
-
-### Layer 12 — Interpreted Languages and Runtimes
-
-```
-What:     Programs that read other programs and execute them
-Where:    Compiled executables running in ring 3
-
-Examples:
-  CPython (python3):
-    C program compiled to machine code
-    Reads .py files as text
-    Interprets them (executes Python bytecode)
-    Is itself a ring 3 application
-
-  JVM (java):
-    C/C++ program compiled to machine code
-    Reads .class files (Java bytecode)
-    JIT compiles hot bytecode to machine code at runtime
-    Is itself a ring 3 application
-
-  ART (Android Runtime):
-    Compiles DEX bytecode to ARM64 machine code at install time
-    The compiled ARM64 runs in ring 3 (EL0 on Android)
-
-Is it:    Software in ring 3
-```
-
-### Layer 13 — Formal Language Theory
-
-```
-What:     Mathematical framework describing computation and pattern matching
-Where:    In mathematics (not in hardware or software directly)
-          Manifests in: compiler design, regex engines, protocol verification
-
-Components:
-  Finite Automata (DFA, NFA):
-    Mathematical models — not hardware or software by themselves
-    Implemented as software: regex engines, compiler lexers
-    
-  Context-Free Grammars:
-    Mathematical notation for language structure
-    Implemented as software: parser generators (yacc, bison, ANTLG)
-    
-  Regular Expressions:
-    Human notation for patterns recognized by finite automata
-    Implemented as: regex engine libraries (PCRE, RE2, Rust regex)
-    These libraries run in ring 3
-
-  Turing Machines:
-    Mathematical model of universal computation
-    Implemented by: all computers (a Von Neumann computer simulates a TM)
-    Not a piece of software or hardware — a theoretical model
-
-Is it:    Mathematics — a framework for thinking about computation
-          Implemented as: software libraries and tools in ring 3
-          Does NOT run directly in hardware
-          Does NOT have a privilege level
-          Does NOT have a memory address
-
-Where formal languages appear in practice:
-  Compiler lexer: implements a DFA to tokenise source code (software, ring 3)
-  Compiler parser: implements a PDA to parse grammar (software, ring 3)
-  grep/sed: implements a regex engine (software, ring 3)
-  TCP state machine: implements a DFA for connection state (kernel, ring 0)
-  Hardware packet inspection: DFA implemented in FPGA/ASIC silicon (hardware)
-```
-
----
-
-## The Complete Taxonomy — Hardware, Firmware, Software
-
-```
-HARDWARE (silicon, electricity, physics):
-  Electrons and voltage levels
-  Transistors (MOSFET — billions per chip)
-  Logic gates (AND, OR, NOT, NAND, NOR, XOR)
-  Adders, multiplexers, decoders (combinational logic)
-  Flip-flops (sequential logic, memory cells)
-  Registers (flip-flop arrays, inside CPU die)
-  ALU (arithmetic/logic unit)
-  Control unit + decoder (pattern detector circuits)
-  MMU + TLB (address translation, inside each CPU core)
-  L1/L2/L3 cache (SRAM, inside CPU die)
-  Clock circuit (crystal oscillator)
-  RAM chips (DRAM cells, separate from CPU)
-  ROM chips (BIOS/UEFI stored here)
-  Storage chips (NAND flash cells)
-  Network cards, USB controllers, GPU (dedicated silicon)
-
-FIRMWARE (code in ROM/flash — between hardware and software):
-  BIOS/UEFI (x86 motherboard startup code)
-  BootROM (mobile chip first-stage bootloader)
-  CPU microcode (x86-64 uop translation layer)
-  Storage controller firmware
-  Network card firmware (runs on card's own processor)
-
-SOFTWARE RING 0 (kernel mode — privileged):
-  Linux kernel (monolithic + modules)
-  Windows NT kernel
-  XNU kernel (macOS/iOS)
-  OP-TEE OS (ARM TrustZone Secure World)
-  Apple sepOS (Secure Enclave Processor)
-  Hypervisors: KVM, VMware, Hyper-V (ring -1 / VMX root actually)
-
-SOFTWARE RING 3 (user mode — unprivileged):
-  System libraries: glibc, libpthread, libssl
-  Init system: systemd, launchd, Android init
-  Shells: bash, zsh, fish, sh
-  System utilities: ls, ps, top, grep, sed, awk, ssh, nc
-  Compilers: GCC, Clang, rustc (ring 3 programs that produce machine code)
-  Assemblers: nasm, gas (ring 3 programs that produce machine code)
-  Runtimes: CPython, JVM, ART, Node.js
-  Applications: your programs, web browsers, databases
-
-MATHEMATICS (not hardware, not software — theoretical framework):
-  Formal language theory
-  Automata theory (DFA, NFA, PDA, TM)
-  Regular expressions (notation)
-  Context-free grammars (notation)
-  Lambda calculus
-  Computability theory
-  These are IDEAS implemented by software tools
-```
-
----
-
-## The Full Flow — From Human Writing Code to CPU Executing It
-
-```
-STEP 1 — HUMAN WRITES SOURCE CODE
-  Tool:    Text editor (vim, VSCode)
-  Input:   Human intent
-  Output:  Text file (.c, .py, .asm) on disk
-  Ring:    N/A (disk file, not executing yet)
-  Level:   Layer 8 (C) or Layer 7 (assembly)
-
-STEP 2 — ASSEMBLY: ASSEMBLER READS TEXT, OUTPUTS MACHINE CODE
-  Tool:    nasm, gas (assembler program)
-  Input:   .asm text file
-  Output:  .o object file (machine code in ELF container)
-  Ring:    Ring 3 (assembler is a user program)
-  Layer:   Software tool — Layer 7
-  Does:    Lexical analysis (tokenise mnemonics)
-           Opcode table lookup (MOV -> 0x89, ADD -> 0x03, etc.)
-           Outputs raw bytes matching ISA specification
-  Formal language used: Regular expressions (lexer tokenises input)
-                        Simple grammar (parser recognises instruction format)
-
-STEP 3 — C: COMPILER READS C TEXT, OUTPUTS MACHINE CODE
-  Tool:    GCC, Clang
-  Input:   .c source file
-  Output:  .o object file (machine code in ELF container)
-  Ring:    Ring 3
-  Layer:   Software tool — Layer 8
-  Internal stages:
-    Lexer:    tokenises C source using DFA (regex for each token type)
-              Formal language: regular expressions / finite automata
-    Parser:   recognises C grammar using PDG (context-free grammar)
-              Formal language: context-free grammar / pushdown automaton
-    Semantic: type checking, scope resolution
-    IR gen:   produces intermediate representation (LLVM IR, GCC GIMPLE)
-    Optimiser: transforms IR for performance
-    Code gen: translates IR to target machine code (x86-64, ARM64, etc.)
-    Internal assembler: produces ELF object file
-
-STEP 4 — LINKER COMBINES OBJECTS INTO EXECUTABLE
-  Tool:    ld (GNU linker)
-  Input:   Multiple .o files + library archives (.a, .so)
-  Output:  ELF executable binary file
-  Ring:    Ring 3
-  Does:    Resolves cross-file references (symbol resolution)
-           Sets final virtual addresses for each section
-           Produces the final ELF with .text, .data, .bss, etc.
-
-STEP 5 — USER RUNS THE PROGRAM
-  Action:  ./myprogram (or kernel exec on behalf of shell)
-  Kernel:  Reads ELF header (magic number, architecture, entry point)
-           Allocates virtual address space for new process
-           Creates page table for the new process
-           Maps ELF sections to virtual pages (Present=0, lazy loading)
-           Sets up initial stack (argc, argv, environment)
-           Sets RIP/PC to ELF entry point
-  Ring:    Kernel does this in ring 0, then switches to ring 3 for user code
-
-STEP 6 — CPU EXECUTES THE PROGRAM (Ring 3)
-  Hardware: Fetch-decode-execute cycle begins at entry point
-  Fetch:    MMU translates virtual address -> physical
-            Page fault if not in RAM -> kernel loads from ELF on disk
-            CPU reads instruction bytes from L1 I-cache
-  Decode:   Control unit decoder recognises opcode pattern
-            Pattern detector AND gates fire the right control wire
-  Execute:  ALU performs the operation
-            Registers updated
-            Memory read/written (through MMU for every access)
-  Increment: RIP/PC moves to next instruction
-  Repeat:   Billions of times per second
-
-STEP 7 — PROGRAM CALLS A FUNCTION
-  What:     CPU executes CALL instruction (x86) or BL instruction (ARM)
-  Hardware: CALL pushes return address to stack, jumps to function
-            No ring change, no kernel involvement
-            Entire operation: push + jump = 1-3 cycles
-  Ring:     Stays in ring 3 throughout
-
-STEP 8 — PROGRAM MAKES A SYSTEM CALL
-  What:     Program needs kernel service (read file, write to terminal, fork)
-  How:      glibc wrapper calls SYSCALL instruction (x86) or SVC (ARM)
-  Hardware:
-    CPU saves current RIP/RFLAGS
-    CPU reads LSTAR/VBAR (kernel set this at boot)
-    CPU atomically changes CPL: 3 -> 0
-    CPU jumps to kernel syscall entry point
-    Kernel validates arguments (are pointers in user space? valid fd?)
-    Kernel performs the operation (in ring 0, can access all memory/hardware)
-    Kernel places result in RAX/X0
-    CPU executes SYSRET/ERET
-    CPU atomically changes CPL: 0 -> 3
-    User program continues
-  Cost:     100-300 nanoseconds (1000x slower than function call)
-
-STEP 9 — PROGRAM ACCESSES MEMORY
-  Every single memory access goes through:
-    CPU generates virtual address
-    MMU checks TLB (cache of recent translations)
-      TLB hit (99%+ of the time): get physical address in 1-2 cycles
-      TLB miss: page table walk (4 RAM reads = 400+ cycles)
-        Check permission flags in PTE
-          Permission denied (U/S=0 from ring 3): page fault -> SIGSEGV
-          Page not present (Present=0): page fault -> kernel loads page
-          NX set (executing non-executable page): fault -> SIGSEGV
-          Otherwise: physical address obtained
-    Cache lookup: L1 (4 cycles), L2 (12 cycles), L3 (40 cycles), RAM (100+)
-    Data returned to register
-
-STEP 10 — PROGRAM TERMINATES
-  Program calls exit() or returns from main()
-  glibc calls _exit() system call
-  Kernel frees all page table entries
-  Kernel frees all physical frames (marks them available for other processes)
-  Kernel removes process from scheduler
-  Kernel sends SIGCHLD to parent process
-  Parent's wait() returns with exit code
-```
-
----
-
-## The Single Mental Model — Everything in One View
-
-```
-TRANSISTORS (hardware, physics)
-    |
-    | wired into
-    v
-LOGIC GATES (hardware, circuits)
-    |
-    | combined into
-    v
-FUNCTIONAL UNITS (hardware: ALU, registers, decoder, MMU, cache, RAM)
-    |
-    | decoder implements
-    v
-INSTRUCTION SET ARCHITECTURE (the interface between hardware and software)
-    |
-    | lowest software layer
-    v
-MACHINE CODE (software — bytes in memory, executed by hardware)
-    |
-    | human-readable form
-    v
-ASSEMBLY LANGUAGE (text) ──► ASSEMBLER (ring 3 tool) ──► machine code
-    |
-    | higher abstraction
-    v
-C / RUST / GO (text) ──► COMPILER (ring 3 tool) ──► machine code
-    |
-    | managed by
-    v
-OPERATING SYSTEM
-  KERNEL (ring 0):
-    - manages physical frames (page tables, page faults)
-    - schedules processes (who runs when)
-    - provides system calls (the gate between ring 3 and ring 0)
-    - runs device drivers (talks to hardware)
-  USERSPACE (ring 3):
-    - glibc, shells, utilities, applications
-    - all use system calls to reach the kernel
-    |
-    | enforced by
-    v
-PROTECTION RINGS (hardware mechanism in CPU)
-  Ring 0: kernel only
-  Ring 3: everything else
-    |
-    | address translation by
-    v
-MMU (hardware inside CPU core)
-  Virtual addresses ──► page table walk ──► physical addresses
-  Page faults ──► kernel page fault handler ──► load from swap or kill
-    |
-    | pages live in
-    v
-PHYSICAL RAM FRAMES (hardware — DRAM chips)
-  4KB blocks of physical memory
-  Organised by the kernel's memory manager
-  Mapped to virtual pages via page tables
-    |
-    | described by
-    v
-FORMAL LANGUAGE THEORY (mathematics — not hardware or software)
-  Regular expressions ──► regex engines (ring 3 software)
-  Context-free grammars ──► parsers (ring 3 software)
-  Finite automata ──► compiler lexers (ring 3 software)
-  Pushdown automata ──► compiler parsers (ring 3 software)
-  Turing machines ──► the theoretical model all computers instantiate
-```
-
-
----
-
--e 
----
-
--e 
----
-
-## Part II — The Instruction Bridge
-
-*Chapters 4-5 are where hardware and software meet. The instruction set is the contract between silicon and code. Virtual memory is the hardware mechanism that makes multitasking and protection possible.*
-
-# Chapter 4: The Instruction Set — Opcodes, Decoders, x86-64, ARM64 and RISC-V
+# Chapter 4: The Instruction Set — Opcodes, Decoders, Architecture and Execution
 
 Chapter 01 established that logic gates respond to bit patterns. This chapter answers what those bit patterns are, how the control unit recognises them, what an opcode is and where the word came from, what the difference is between a CPU's bit width and its opcode width, how the very first programs were written before any tools existed, and how programmers knew what streams of 0s and 1s meant when there was no screen, no ASCII, and no encoding standard.
 
@@ -5042,6 +2133,2042 @@ The instruction set is the hardware contract that defines every trust boundary a
 -e 
 ---
 
+---
+
+## Part B — The CPU Execution Pipeline
+
+## Out-of-Order Execution — The CPU Does Not Execute in Order
+
+When you write code, you assume instructions execute one after another in the order you wrote them. On every modern CPU this assumption is false. The CPU reorders instructions internally to keep its execution units busy while waiting for slow operations like memory reads.
+
+### The Problem Out-of-Order Solves
+
+```
+Consider this sequence:
+  MOV RAX, [address]    ; load from memory — takes 100-300 cycles
+  ADD RBX, 1            ; add 1 to RBX — takes 1 cycle
+  ADD RCX, 2            ; add 1 to RCX — takes 1 cycle
+
+In-order CPU (simple):
+  Cycle 1:   issue MOV RAX, [address]
+  Cycles 2-200: STALL — waiting for RAM to return value
+  Cycle 201: issue ADD RBX, 1
+  Cycle 202: issue ADD RCX, 2
+  Total: ~202 cycles, most of them wasted stalling
+
+Out-of-order CPU (modern):
+  Cycle 1:   issue MOV RAX, [address] (dispatched to load unit)
+  Cycle 2:   issue ADD RBX, 1 (no dependency on RAX — execute now)
+  Cycle 3:   issue ADD RCX, 2 (no dependency on RAX — execute now)
+  Cycle 100: MOV completes, RAX now has value
+  Total: ~100 cycles — 50% faster on this example
+```
+
+The CPU detects that ADD RBX and ADD RCX do not depend on the result of the memory load and executes them while waiting. From the programmer's perspective the output is identical — the CPU ensures this — but the execution order is completely different.
+
+### The Reorder Buffer (ROB)
+
+The ROB is a circular buffer inside the CPU that tracks all in-flight instructions in their original program order. Instructions enter the ROB in order, execute out of order, and retire (commit results) in order.
+
+```
+ROB structure (simplified):
+
+Entry  Instruction        Status       Result
+─────  ─────────────────  ───────────  ──────
+ 0     MOV RAX,[addr]     EXECUTING    (waiting for memory)
+ 1     ADD RBX, 1         COMPLETE     RBX = old_RBX + 1
+ 2     ADD RCX, 2         COMPLETE     RCX = old_RCX + 2
+ 3     MOV RDX, RAX       WAITING      (depends on entry 0)
+ 4     ...
+
+Retirement happens from entry 0 first:
+  Entry 0 completes (memory returns) → commit RAX, retire entry 0
+  Entry 1 already complete → commit RBX, retire entry 1
+  Entry 2 already complete → commit RCX, retire entry 2
+  Entry 3 can now execute → dispatch to ALU
+
+To the outside world: instructions appear to have executed in order.
+Inside the CPU: they ran in a completely different order.
+```
+
+### Reservation Stations
+
+Before an instruction can execute, it waits in a **reservation station** — a buffer attached to each execution unit. The instruction waits here until all its input operands are available.
+
+```
+Reservation stations for the ALU:
+
+Slot  Instruction   Src1 Ready?  Src1 Value  Src2 Ready?  Src2 Value
+────  ────────────  ───────────  ──────────  ───────────  ──────────
+ 0    ADD RBX, 1    YES          old_RBX     YES          1
+ 1    ADD RCX, 2    YES          old_RCX     YES          2
+ 2    ADD RDX, RAX  NO (RAX     ---         YES          ---
+                    not ready)
+
+Slots 0 and 1 can execute immediately.
+Slot 2 waits until RAX arrives from the memory load.
+When RAX becomes available, slot 2 executes.
+```
+
+---
+
+## Register Renaming — Eliminating False Dependencies
+
+Consider this sequence:
+
+```
+MOV RAX, 5      ; write RAX
+ADD RBX, RAX    ; read RAX  ← true dependency: must wait for MOV
+MOV RAX, 10     ; write RAX ← writes RAX again
+ADD RCX, RAX    ; read RAX  ← reads the NEW RAX from line 3
+```
+
+The second `MOV RAX, 10` creates a **write-after-write** hazard with the first `MOV RAX, 5`. The `ADD RCX, RAX` has a **write-after-read** hazard with `ADD RBX, RAX`. These are called **false dependencies** — they only exist because both instructions happen to use the register named RAX, not because one truly needs the other's result.
+
+Register renaming eliminates false dependencies by mapping architectural registers (the 16 registers the programmer sees: RAX-R15) to a larger pool of **physical registers** inside the CPU.
+
+```
+Physical register file on modern x86-64: ~180-512 registers
+Architectural register file visible to programmer: 16 registers
+
+Renaming example:
+
+Instruction            Architectural  Physical register assigned
+─────────────────────  ─────────────  ──────────────────────────
+MOV RAX, 5             RAX            P47
+ADD RBX, RAX           RAX→P47        (reads P47, writes P23 for RBX)
+MOV RAX, 10            RAX            P89   ← NEW physical register!
+ADD RCX, RAX           RAX→P89        (reads P89, not P47)
+
+Now:
+  ADD RBX, RAX reads P47
+  MOV RAX, 10 writes P89
+  These are DIFFERENT physical registers
+  No false dependency
+  Both can execute in parallel with each other
+```
+
+Register renaming is done by the **Register Alias Table (RAT)** — a hardware lookup table that maps each architectural register name to its current physical register. Updated on every instruction that writes a register.
+
+---
+
+## Speculative Execution — Running Code Before Knowing If It Should
+
+When the CPU encounters a conditional branch, it does not know which way to go until the condition is evaluated. Evaluating the condition might take many cycles. Waiting would waste time.
+
+**Speculative execution** means the CPU guesses which branch will be taken and starts executing the predicted path immediately without waiting for the condition to be confirmed.
+
+```
+if (x > 0) {
+    result = expensive_function(x);  // branch taken
+} else {
+    result = 0;                      // branch not taken
+}
+
+Branch predictor guesses: "x is probably > 0, branch will be taken"
+CPU immediately starts executing expensive_function(x)
+Meanwhile evaluates x > 0...
+
+IF guess correct:
+  expensive_function has been running during evaluation
+  No time wasted — result is ready sooner
+  CPU commits the speculative results
+
+IF guess wrong:
+  CPU must discard all speculative results
+  Return to architectural state before the branch
+  Execute the correct path (result = 0)
+  This is called a branch misprediction — costs 15-20 cycles
+```
+
+### Branch Predictors
+
+Modern branch predictors are sophisticated pattern-recognition circuits:
+
+```
+Static prediction:
+  Forward branches (if-then): predict not taken
+  Backward branches (loops): predict taken
+  Simple rule-based, no history
+
+Dynamic prediction:
+  2-bit saturating counter per branch:
+    00 = strongly not taken
+    01 = weakly not taken
+    10 = weakly taken
+    11 = strongly taken
+  History shifts the counter on each execution
+
+Tournament predictor (modern):
+  Combines multiple predictor types
+  Uses meta-predictor to choose which sub-predictor to trust
+  Intel and AMD branch predictors: >98% accuracy on typical code
+
+Branch Target Buffer (BTB):
+  Caches the target address of indirect branches
+  call [rax] — where does rax point?
+  BTB remembers previous targets and predicts
+```
+
+### Spectre and Meltdown — When Speculation Becomes a Vulnerability
+
+Speculative execution is the hardware basis of the **Spectre** and **Meltdown** vulnerabilities (disclosed January 2018).
+
+```
+Meltdown (CVE-2017-5754):
+  CPU speculatively executes instructions AFTER a page fault
+  Page table says: this kernel address is not accessible from ring 3
+  CPU checks this, but speculatively executes the next instruction anyway
+  The next instruction reads kernel memory into a register
+  CPU discovers the fault, discards the register value
+  BUT: the memory access already brought data into the cache
+  Attacker measures cache timing to infer the discarded value
+  Kernel memory read from ring 3 — complete privilege violation
+
+  Fixed by: KPTI (Kernel Page Table Isolation)
+    Kernel pages are entirely unmapped from user page tables
+    Context switch maps and unmaps kernel pages
+    Nothing to speculatively access even with misprediction
+
+Spectre (CVE-2017-5753, CVE-2017-5715):
+  More subtle — exploits branch prediction, not just speculation
+  Attacker trains branch predictor with attacker-controlled branches
+  Victim code's branch predictor is poisoned
+  Victim speculatively executes wrong path
+  Speculatively executed code accesses secret memory
+  Secret leaks via cache timing side channel
+  
+  Fixed by: retpoline, IBRS, IBPB — software and microcode mitigations
+    No clean hardware fix — speculation is fundamental to performance
+```
+
+---
+
+## Interrupts vs Exceptions vs Traps — Three Ways to Enter the Kernel
+
+All three transfer control from user code (or hardware) to kernel code. They are different in cause, timing, and intent.
+
+```
+INTERRUPT (asynchronous — caused by hardware):
+  Source:    hardware device (keyboard, NIC, timer, DMA controller)
+  When:      any time — between any two instructions
+  Cause:     hardware needs CPU attention
+  Examples:  keyboard key pressed, network packet arrived,
+             timer fired (10ms scheduler tick),
+             DMA transfer complete
+  Handling:  CPU finishes current instruction
+             Saves RIP and RFLAGS to kernel stack
+             Loads handler address from IDT (Interrupt Descriptor Table)
+             Executes interrupt handler (ISR)
+             Handler services device, sends EOI to interrupt controller
+             Returns to interrupted code via IRET instruction
+
+EXCEPTION (synchronous — caused by instruction):
+  Source:    CPU itself, triggered by an instruction's behaviour
+  When:      immediately when the offending instruction executes
+  Cause:     instruction does something illegal or exceptional
+  Examples:
+    Page fault (#PF):    virtual address not mapped or permission denied
+    General Protection Fault (#GP): ring 3 executes privileged instruction
+    Divide by Zero (#DE): DIV instruction with divisor = 0
+    Invalid Opcode (#UD): CPU sees undefined opcode bytes
+    Stack Fault (#SS):   stack segment limit exceeded
+    Breakpoint (#BP):    INT3 instruction (debugger breakpoint)
+  Handling:  same mechanism as interrupt but triggered by the instruction
+             Kernel fault handler examines the cause
+             Either fixes it (page fault → load page) or kills process (SIGSEGV)
+
+TRAP (synchronous — deliberate software-initiated):
+  Source:    software, intentionally executed
+  When:      when the trap instruction executes
+  Cause:     deliberate request for kernel service or debugger notification
+  Examples:
+    SYSCALL (x86-64):   system call — ring 3 requests kernel service
+    SVC #0 (ARM64):     system call on ARM
+    INT3:               debugger breakpoint (also an exception)
+    INT 0x80 (legacy):  old Linux system call method
+  Handling:  controlled entry to kernel at known safe entry points
+             SYSCALL specifically uses LSTAR register for entry address
+
+COMPARISON TABLE:
+  Type        Cause           Timing        Resumable?
+  ─────────   ─────────────   ───────────   ──────────────────────────
+  Interrupt   Hardware        Async         Yes (code continues after)
+  Exception   Bad instruction Sync          Sometimes (page fault yes,
+                                            GPF usually kills process)
+  Trap        Intentional     Sync          Yes (syscall returns)
+```
+
+```
+Interrupt Descriptor Table (IDT):
+  Array of 256 entries in memory
+  Each entry: handler address + privilege requirements
+  Entry 0:  divide by zero handler
+  Entry 1:  debug exception handler
+  Entry 3:  breakpoint handler (INT3)
+  Entry 14: page fault handler
+  Entry 32-255: hardware interrupt handlers
+  Kernel loads IDT address into IDTR register at boot using LIDT instruction
+  LIDT is a privileged instruction — ring 0 only
+```
+
+---
+
+## The GDT — Global Descriptor Table
+
+The **Global Descriptor Table** is an x86 data structure in memory that defines memory segments and their privilege levels. It is a legacy of the 16-bit segmented memory model but is still required on x86-64.
+
+```
+WHY IT EXISTS:
+  x86 originally used segmentation (8086, 1978) to divide memory into segments
+  The 80286 added protected mode with privilege enforcement via segment descriptors
+  x86-64 mostly abandoned segmentation for flat memory model
+  But the GDT still exists and is required for ring transitions
+
+WHAT THE GDT CONTAINS TODAY:
+  Entry 0: null descriptor (required by CPU, must be all zeros)
+  Entry 1: kernel code segment (CPL=0, 64-bit, execute/read)
+  Entry 2: kernel data segment (CPL=0, read/write)
+  Entry 3: user code segment  (CPL=3, 64-bit, execute/read)
+  Entry 4: user data segment  (CPL=3, read/write)
+  Entry 5: TSS descriptor     (Task State Segment — holds kernel stack pointer)
+  FS/GS base: used for thread-local storage
+
+WHAT THE CS REGISTER HOLDS:
+  The CS (Code Segment) register holds a SELECTOR — an index into the GDT
+  The bottom 2 bits of the selector = CPL (Current Privilege Level)
+  CS selector for kernel code: 0x08 (index 1, CPL=00)
+  CS selector for user code:   0x33 (index 6, CPL=11)
+
+  When SYSCALL fires:
+    CPU loads the kernel CS selector (CPL=0) from IA32_STAR MSR
+    This is how CPL changes from 3 to 0 atomically
+
+TSS (Task State Segment):
+  Structure in memory pointed to by GDT TSS entry
+  Contains RSP0 — the kernel stack pointer for ring 0
+  When interrupt fires in ring 3, CPU reads RSP0 from TSS
+  Switches to that kernel stack before calling handler
+  Prevents user stack being used for kernel operations
+
+The kernel sets up the GDT at boot:
+  lgdt [gdt_pointer]    ; load GDT address into GDTR register
+  ltr  [tss_selector]   ; load TSS selector into TR register
+  Both are ring 0 privileged instructions
+```
+
+---
+
+## Context Switching — What the Kernel Actually Saves and Restores
+
+A **context switch** is the kernel replacing one process's CPU state with another's. Every thread switch, every process switch, every time the scheduler picks a new task — a context switch happens.
+
+```
+WHAT MUST BE SAVED (the complete CPU state of the outgoing process):
+
+General-purpose registers:
+  RAX, RBX, RCX, RDX, RSI, RDI, RSP, RBP, R8-R15
+  (16 registers × 8 bytes = 128 bytes)
+
+Instruction pointer:
+  RIP — where this process will resume
+
+Flags:
+  RFLAGS — condition codes (ZF, CF, SF, OF, IF...)
+
+Segment registers:
+  CS, SS, DS, ES, FS, GS
+  FS.base and GS.base (used for thread-local storage)
+
+FPU/SSE/AVX state:
+  XMM0-XMM15 (128-bit SSE registers) — 256 bytes
+  YMM0-YMM15 (256-bit AVX registers) — 512 bytes
+  ZMM0-ZMM31 (512-bit AVX-512 registers) — 2048 bytes
+  MXCSR (SSE control/status register)
+  x87 FPU stack and control registers
+  Saved using FXSAVE or XSAVE instruction (can save 2.5KB+ of state)
+
+Page table pointer:
+  CR3 — physical address of this process's PML4 page table
+  Loading new CR3 switches the entire virtual address space
+  Also flushes TLB (all cached address translations become invalid)
+  TLB flush is expensive — PCID (Process Context ID) can avoid some flushes
+
+WHERE THE SAVED STATE GOES:
+  Into the kernel's per-task data structure: task_struct in Linux
+  Specifically in the thread field: struct thread_struct
+  Stored in kernel memory — the process cannot access its own task_struct
+```
+
+```
+CONTEXT SWITCH SEQUENCE (Linux, simplified):
+
+1. Interrupt fires (timer, 10ms tick) or process blocks (I/O wait)
+2. CPU saves RIP and RFLAGS to kernel stack (hardware, automatic)
+3. CPU switches to kernel stack (RSP0 from TSS)
+4. Interrupt handler runs in kernel (ring 0)
+5. Handler calls schedule()
+6. schedule() calls context_switch(prev, next)
+7. switch_mm(prev, next):
+   - load new CR3 (change page tables — new virtual address space)
+   - TLB flush (or update PCID)
+8. switch_to(prev, next):
+   - XSAVE: save FPU/SSE/AVX state of prev task
+   - Save general registers of prev task to prev->thread
+   - Load general registers of next task from next->thread
+   - XRSTOR: restore FPU/SSE/AVX state of next task
+   - Load FS.base and GS.base for next task (thread-local storage)
+9. Return to next task's RIP (resume where it was interrupted)
+10. IRET: restore RFLAGS, switch CS (ring 0 → ring 3), restore RSP
+
+From the next process's perspective: nothing happened.
+It resumes exactly where it left off, all registers intact.
+
+Context switch overhead: ~1-10 microseconds
+  TLB flush is the most expensive part (~1-3 microseconds)
+  Threads in the same process share page tables — no TLB flush needed
+  This is one reason threads are cheaper than processes
+```
+
+---
+
+## ELF Format in Detail — What Is Inside an Executable
+
+Every compiled program on Linux is an ELF (Executable and Linkable Format) file. Understanding ELF explains why programs work the way they do, why ASLR randomises specific addresses, and how buffer overflow exploits target specific sections.
+
+```
+ELF FILE STRUCTURE:
+
+┌──────────────────────────────────────────────────┐
+│  ELF Header (64 bytes)                           │
+│    Magic: 7F 45 4C 46 ("ELF" in ASCII)          │
+│    Class: 64-bit                                 │
+│    Data: little-endian                           │
+│    OS/ABI: Linux                                 │
+│    Type: ET_EXEC (executable) or ET_DYN (PIE)   │
+│    Machine: x86-64 (0x3E) or ARM64 (0xB7)       │
+│    Entry point: 0x401000 (first instruction)     │
+│    PHoff: offset to program header table         │
+│    SHoff: offset to section header table         │
+├──────────────────────────────────────────────────┤
+│  Program Header Table (for the OS loader)        │
+│    LOAD segment 1: .text (code) — r-x            │
+│    LOAD segment 2: .data+.bss (data) — rw-       │
+│    DYNAMIC segment: dynamic linking info         │
+│    GNU_STACK: stack permissions (usually rw- NX) │
+│    GNU_RELRO: read-only after relocation         │
+├──────────────────────────────────────────────────┤
+│  .text section — compiled machine code           │
+│    Your functions as opcode bytes                │
+│    Read-only + executable                        │
+│    NX bit NOT set here (this IS code)            │
+├──────────────────────────────────────────────────┤
+│  .rodata section — read-only data                │
+│    String literals: "hello\n"                    │
+│    Constant arrays                               │
+│    Read-only, NOT executable                     │
+├──────────────────────────────────────────────────┤
+│  .data section — initialised global variables    │
+│    int x = 5;  ← lives here (value 5 stored)    │
+│    Read-write, NOT executable                    │
+├──────────────────────────────────────────────────┤
+│  .bss section — uninitialised global variables   │
+│    int y;  ← lives here (no bytes in file)      │
+│    Kernel zeroes this region when loading        │
+│    Takes no space in ELF file itself             │
+│    Read-write, NOT executable                    │
+├──────────────────────────────────────────────────┤
+│  .plt section — Procedure Linkage Table          │
+│    Stubs for calling shared library functions    │
+│    Covered in dynamic linking section below      │
+├──────────────────────────────────────────────────┤
+│  .got section — Global Offset Table              │
+│    Addresses resolved at runtime by dynamic linker│
+│    Covered in dynamic linking section below      │
+├──────────────────────────────────────────────────┤
+│  .symtab — symbol table (debug builds)           │
+│    Maps function/variable names to addresses     │
+│    Stripped in production binaries               │
+├──────────────────────────────────────────────────┤
+│  Section Header Table (for linker/debugger)      │
+│    Describes all sections above                  │
+│    Not needed at runtime (OS uses program hdrs)  │
+└──────────────────────────────────────────────────┘
+```
+
+```bash
+# Inspect an ELF binary
+readelf -h /bin/ls          # ELF header
+readelf -S /bin/ls          # all sections
+readelf -l /bin/ls          # program headers (segments)
+objdump -d /bin/ls          # disassemble .text section
+objdump -s -j .rodata /bin/ls  # dump .rodata contents
+size /bin/ls                # sizes of text, data, bss
+
+# See the magic bytes
+xxd /bin/ls | head -2
+# 7f 45 4c 46 = ELF magic
+
+# PIE (Position Independent Executable) vs non-PIE
+file /bin/ls
+# ... ELF 64-bit LSB pie executable ...
+# PIE: base address randomised by ASLR each run
+
+# Check sections of your own compiled program
+gcc -o myprogram myprogram.c
+readelf -S myprogram
+```
+
+---
+
+## The Linker in Depth — Symbol Resolution, Relocation and the GOT/PLT
+
+The linker takes multiple object files (.o) and produces a final executable. Understanding it explains how function calls across files work and why the PLT and GOT exist.
+
+### Symbol Resolution
+
+When you compile multiple .c files separately, each produces a .o file. References between files are **unresolved symbols** — placeholders that must be filled in.
+
+```
+File A: main.c
+  calls printf() — unresolved: where is printf?
+  calls helper() — unresolved: where is helper?
+
+File B: helper.c
+  defines helper() — provides the symbol
+  calls malloc() — unresolved: where is malloc?
+
+Static library: libc.a
+  contains printf.o: defines printf()
+  contains malloc.o: defines malloc()
+
+Linker combines all of these:
+  1. Collect all object files and needed library objects
+  2. Build a symbol table: name → address
+  3. Resolve every unresolved reference
+  4. Assign final virtual addresses to every symbol
+  5. Patch all call instructions with correct addresses
+  6. Output ELF executable
+```
+
+### Static vs Dynamic Linking
+
+```
+STATIC LINKING:
+  Linker copies all library code into the executable
+  Final binary contains: your code + printf + malloc + everything
+  Self-contained: runs without any external .so files
+  Larger binary size
+  No version conflicts
+  Used for: embedded systems, containers, security-critical tools
+
+DYNAMIC LINKING:
+  Linker records which shared libraries are needed
+  Does NOT copy library code into executable
+  At runtime: OS loads the shared library (.so file) into memory
+  Multiple programs share one copy of the library in memory
+  Smaller binary size
+  Library updates benefit all programs automatically
+  Used for: almost everything on a normal Linux system
+
+Check which type:
+  file /bin/ls
+  # dynamically linked
+  ldd /bin/ls
+  # shows all shared libraries the binary needs:
+  # libc.so.6, libselinux.so.1, etc.
+
+  ldd /bin/busybox
+  # statically linked — no dependencies
+```
+
+### The PLT and GOT — Dynamic Linking at Runtime
+
+When a dynamically linked program calls `printf()`, the address of `printf` is not known at compile time — it depends on where the dynamic linker places libc.so in memory. The PLT and GOT solve this.
+
+```
+PLT (Procedure Linkage Table) — in .plt section of executable:
+  A trampoline stub for each external function
+  printf@plt:
+    JMP [printf@got]    ← indirect jump through GOT entry
+    PUSH index          ← only executed first time
+    JMP plt_resolver    ← only executed first time
+
+GOT (Global Offset Table) — in .got section of executable:
+  Array of 8-byte addresses, one per external function
+  Populated by dynamic linker at program start (or lazily)
+  Initially points back into PLT for lazy resolution
+  After first call: contains real address of function
+
+FIRST CALL to printf():
+  1. CPU executes: CALL printf@plt
+  2. PLT stub: JMP [printf@got]
+  3. GOT entry points back to PLT resolver (not resolved yet)
+  4. PLT resolver calls dynamic linker
+  5. Dynamic linker finds printf in libc.so
+  6. Dynamic linker writes real printf address into GOT
+  7. Jumps to printf — function executes
+
+SUBSEQUENT CALLS to printf():
+  1. CPU executes: CALL printf@plt
+  2. PLT stub: JMP [printf@got]
+  3. GOT entry now has real printf address
+  4. Jumps directly to printf
+  No resolver involved — just two jumps
+
+This is called lazy binding — resolution on first call only.
+```
+
+```bash
+# See PLT entries
+objdump -d /bin/ls | grep -A3 "@plt"
+
+# See GOT entries
+objdump -R /bin/ls          # dynamic relocations (GOT entries)
+readelf -r /bin/ls          # all relocations
+
+# Trace dynamic linking at runtime
+LD_DEBUG=bindings ls 2>&1 | head -20
+# Shows every symbol resolution as it happens
+```
+
+### Security Implications of PLT and GOT
+
+```
+GOT OVERWRITE ATTACK:
+  If attacker can write to the GOT (writable memory region)
+  They can replace printf@got with address of their shellcode
+  Next call to printf() jumps to shellcode instead
+  Classic ret2plt / GOT hijacking technique
+
+RELRO (Relocation Read-Only) — defence against GOT overwrite:
+  Partial RELRO: GOT is writable after dynamic linking
+  Full RELRO:    dynamic linker resolves ALL symbols at startup
+                 then marks GOT as read-only (mprotect)
+                 GOT overwrite impossible after startup
+
+Check RELRO:
+  checksec --file=/bin/ls
+  # Shows: Full RELRO, Partial RELRO, or No RELRO
+
+In CTF/pentest: GOT overwrite only works without Full RELRO
+In modern systems: most binaries have Full RELRO
+```
+
+---
+
+## Atomic Operations and Memory Barriers
+
+On a multi-core CPU, multiple cores execute instructions simultaneously. Without coordination, concurrent access to shared memory produces unpredictable results.
+
+### The Race Condition at Hardware Level
+
+```
+Two threads, both executing: counter++;
+counter++ compiles to:
+  MOV EAX, [counter]    ; read
+  ADD EAX, 1            ; increment
+  MOV [counter], EAX    ; write back
+
+Without synchronisation (both cores execute simultaneously):
+
+Core 0:                          Core 1:
+  MOV EAX, [counter]  → EAX=5
+                                   MOV EAX, [counter]  → EAX=5
+  ADD EAX, 1          → EAX=6
+  MOV [counter], EAX  → mem=6
+                                   ADD EAX, 1          → EAX=6
+                                   MOV [counter], EAX  → mem=6
+
+Result: counter=6 instead of 7
+One increment was lost
+```
+
+### Atomic Operations — Hardware Support
+
+The x86 LOCK prefix makes a read-modify-write operation atomic at the hardware level:
+
+```
+LOCK ADD [counter], 1
+
+What happens:
+  CPU asserts the LOCK# signal on the memory bus
+  Other cores cannot access [counter] until this completes
+  Read → increment → write happens as one indivisible operation
+  Other cores see either the old value or the new value
+  Never an intermediate state
+
+x86-64 atomic instructions:
+  LOCK ADD    atomic add
+  LOCK XCHG   atomic exchange (always locks even without LOCK prefix)
+  LOCK CMPXCHG compare-and-swap — the basis of all lock-free algorithms
+  LOCK INC, LOCK DEC, LOCK OR, LOCK AND, LOCK XOR
+
+ARM64 atomic operations:
+  LDXR/STXR   load-exclusive / store-exclusive
+              STXR fails if another core modified the location
+              Retry loop if it fails
+  LDADD, STADD  atomic add (ARMv8.1+)
+  CAS         compare and swap (ARMv8.1+)
+```
+
+### Memory Barriers — Enforcing Order
+
+Even with atomic operations, the CPU and memory system can reorder memory accesses. A **memory barrier** forces ordering constraints.
+
+```
+TYPES OF REORDERING:
+
+Store-store reordering:
+  Store to A, then store to B
+  CPU may commit B to memory before A
+  Other cores see B updated but A not yet
+
+Load-load reordering:
+  Load from A, then load from B
+  CPU may fetch B before A
+  Reads appear out of order
+
+Store-load reordering (most common on x86):
+  Store to A, then load from B
+  CPU may execute the load before the store is visible
+
+x86-64 memory model (TSO — Total Store Order):
+  Most reorderings prevented by hardware
+  Only store-load reordering is possible
+  Relatively strong memory model
+
+ARM64 memory model (weakly ordered):
+  All four reorderings possible
+  Requires explicit barriers for correct multi-core code
+
+Memory barrier instructions:
+  x86-64: MFENCE (full barrier), LFENCE (load), SFENCE (store)
+  ARM64:  DMB (data memory barrier), DSB (data sync barrier)
+  Linux kernel: smp_mb(), smp_rmb(), smp_wmb() — architecture-neutral
+
+In kernel code:
+  spin_lock() contains an implicit memory barrier
+  All lock/unlock operations include appropriate barriers
+  Needed for: device drivers, lock-free data structures, RCU
+```
+
+---
+
+## CPUID — How Software Queries CPU Capabilities
+
+The CPUID instruction allows software to query what features the CPU supports. The kernel uses this extensively at boot to configure itself.
+
+```
+CPUID instruction:
+  MOV EAX, leaf_number    ; what information do you want?
+  CPUID                   ; ask the CPU
+  ; Results in EAX, EBX, ECX, EDX
+
+Common CPUID leaves:
+
+Leaf 0x0 (basic info):
+  EAX: highest supported basic leaf
+  EBX, EDX, ECX: vendor string
+  GenuineIntel = 47 65 6E 75 49 6E 74 65 6C
+  AuthenticAMD = 41 75 74 68 65 6E 74 69 63
+
+Leaf 0x1 (feature flags):
+  EDX bit 25: SSE    — 128-bit SIMD
+  EDX bit 26: SSE2   — double-precision SIMD
+  ECX bit 28: AVX    — 256-bit SIMD
+  ECX bit 5:  VMX    — Intel virtualisation (VT-x)
+  ECX bit 30: RDRAND — hardware random number generator
+
+Leaf 0x7 subleaf 0 (extended features):
+  EBX bit 0:  FSGSBASE — FS/GS base read/write
+  EBX bit 7:  SMEP     — Supervisor Mode Execution Prevention
+  EBX bit 20: SMAP     — Supervisor Mode Access Prevention
+  ECX bit 2:  UMIP     — User-Mode Instruction Prevention
+  ECX bit 5:  AVX512F  — AVX-512 foundation
+
+Leaf 0x80000001 (AMD extended features):
+  EDX bit 20: NX/XD    — No-Execute bit support
+  EDX bit 29: LM       — Long Mode (64-bit support)
+```
+
+```bash
+# Query CPUID from userspace
+cpuid -1                    # all leaves (install cpuid package)
+cat /proc/cpuinfo | grep flags  # kernel-parsed CPUID features
+
+# Key flags to check for security features:
+grep -m1 "flags" /proc/cpuinfo | tr ' ' '\n' | grep -E \
+  "smep|smap|nx|pse|pae|vmx|svm|aes|avx|rdrand|fsgsbase"
+
+# Check in kernel at boot time
+dmesg | grep -i "CPU\|feature\|SMEP\|SMAP\|PAE\|NX"
+```
+
+The kernel reads CPUID at boot and enables features accordingly:
+
+```
+Boot sequence (kernel CPU detection):
+  CPU powers on
+  Kernel calls cpu_detect() or setup_cpu_features()
+  CPUID leaf 0x1: check for SSE2, SSE4, AVX
+  CPUID leaf 0x7: check for SMEP, SMAP, AVX-512
+  If SMEP found: enable by setting CR4.SMEP bit
+  If SMAP found: enable by setting CR4.SMAP bit
+  If NX found:   enable by setting IA32_EFER.NXE MSR bit
+  Kernel configures itself based on what hardware supports
+```
+
+---
+
+## Compiler IR — Intermediate Representation
+
+Between C source code and machine code, compilers use an **Intermediate Representation (IR)** — a platform-neutral form of the program that is easier to optimise than either source code or machine code.
+
+```
+WHY IR EXISTS:
+
+Without IR:
+  C frontend → x86-64 machine code directly
+  To support ARM64: C frontend → ARM64 machine code directly
+  To support RISC-V: C frontend → RISC-V directly
+  N languages × M architectures = N×M compiler backends
+
+With IR (LLVM approach):
+  C frontend → LLVM IR
+  Rust frontend → LLVM IR
+  Swift frontend → LLVM IR
+  LLVM IR → x86-64 backend
+  LLVM IR → ARM64 backend
+  LLVM IR → RISC-V backend
+  N languages + M architectures = N frontends + M backends
+  Any language compiles to any architecture
+```
+
+### LLVM IR — What It Looks Like
+
+```c
+// C source:
+int add(int a, int b) {
+    return a + b;
+}
+```
+
+```llvm
+; LLVM IR:
+define i32 @add(i32 %a, i32 %b) {
+entry:
+  %result = add i32 %a, %b
+  ret i32 %result
+}
+```
+
+```asm
+; x86-64 machine code (from LLVM IR):
+add:
+  lea eax, [rdi + rsi]  ; result = a + b
+  ret
+
+; ARM64 machine code (from same LLVM IR):
+add:
+  add w0, w0, w1        ; result = a + b
+  ret
+```
+
+The same LLVM IR produces correct machine code for both architectures. The frontend (Clang, rustc) only needs to produce IR. The backend handles each architecture.
+
+### GCC GIMPLE IR
+
+GCC uses its own IR called **GIMPLE** — a simplified three-address form:
+
+```c
+// C source:
+int x = (a + b) * (c + d);
+```
+
+```gimple
+// GIMPLE (three-address code — max one operation per statement):
+tmp1 = a + b;
+tmp2 = c + d;
+x = tmp1 * tmp2;
+```
+
+GIMPLE is what GCC optimises. After optimisation, it converts GIMPLE to RTL (Register Transfer Language) and then to machine code.
+
+```bash
+# See LLVM IR
+clang -emit-llvm -S -o output.ll source.c
+cat output.ll
+
+# See GCC GIMPLE
+gcc -fdump-tree-gimple source.c
+cat source.c.004t.gimple
+
+# See GCC RTL (closer to machine code)
+gcc -fdump-rtl-expand source.c
+```
+
+---
+
+## Shared Libraries and the Dynamic Linker
+
+When a program needs printf(), it does not contain printf. It references libm.so or libc.so. At runtime, the **dynamic linker** (ld.so / ld-linux.so) loads those libraries and connects the references.
+
+```
+DYNAMIC LINKER SEQUENCE when ./myprogram starts:
+
+1. Kernel loads myprogram ELF into memory
+   Maps .text, .data, .bss, .plt, .got
+
+2. Kernel reads PT_INTERP program header
+   Contains path: /lib/x86_64-linux-gnu/ld-linux-x86-64.so.2
+   This is the dynamic linker itself
+
+3. Kernel loads ld-linux.so into memory
+   Jumps to ld-linux.so's entry point (not myprogram's yet)
+
+4. ld-linux.so reads myprogram's PT_DYNAMIC segment
+   Contains list of needed shared libraries:
+     NEEDED libm.so.6
+     NEEDED libc.so.6
+
+5. ld-linux.so finds and loads each library:
+   Search path: LD_LIBRARY_PATH, /etc/ld.so.cache, /lib, /usr/lib
+   mmap() each .so file into process memory
+   Each library gets its own virtual address region (ASLR randomised)
+
+6. ld-linux.so performs relocations:
+   For each GOT entry needing resolution:
+     Find the symbol in the loaded libraries
+     Write the real address into the GOT entry
+   (Or defers to PLT lazy resolution for lazily-bound symbols)
+
+7. ld-linux.so calls each library's initialisation functions
+   .init_array section: constructors run before main()
+
+8. ld-linux.so jumps to myprogram's entry point (_start)
+
+9. _start calls __libc_start_main() which calls main()
+```
+
+```bash
+# See the dynamic linker path
+readelf -l /bin/ls | grep INTERP
+# [Requesting program interpreter: /lib64/ld-linux-x86-64.so.2]
+
+# Trace dynamic linker activity
+LD_DEBUG=all ls 2>&1 | head -50
+
+# See library load addresses (ASLR in effect — different each run)
+ldd /bin/ls
+ldd /bin/ls    # run again — addresses differ
+
+# Preload your own library (hook functions)
+LD_PRELOAD=/path/to/mylib.so ls
+# Your library's functions override libc's — used for Frida-style hooking
+```
+
+### Security Implications of the Dynamic Linker
+
+```
+LD_PRELOAD hijacking:
+  Set LD_PRELOAD to a malicious .so before running a program
+  Your library's functions called instead of real library functions
+  Can intercept: open(), read(), write(), strcmp(), crypt()
+  Used by: Frida (legitimate), rootkits (malicious)
+  Mitigated: setuid/setgid binaries ignore LD_PRELOAD
+
+Library search order manipulation:
+  LD_LIBRARY_PATH can redirect library loading
+  Planting a malicious libcrypto.so.1 in the search path
+  Intercepting crypto operations
+  Mitigated: same — ignored for setuid binaries
+
+DT_RPATH and DT_RUNPATH:
+  Compiled-in library search paths (override LD_LIBRARY_PATH)
+  DT_RPATH: searched before LD_LIBRARY_PATH (bad practice)
+  DT_RUNPATH: searched after LD_LIBRARY_PATH
+  Check with: readelf -d binary | grep -E "RPATH|RUNPATH"
+
+Checking library integrity:
+  checksec --file=/bin/ls  # shows all security properties
+  ldd --verify binary      # verifies library dependencies
+```
+
+
+---
+
+## Part III — The Software Foundation
+
+---
+
+## Part F — How Files Are Processed and the First Assembler Built
+
+## How Files, Video, Audio and Images Are Processed — The CPU Only Sees Numbers
+
+The CPU does not know what a video is. It never does. It never needs to. A video file, an audio file, an image, a PDF — they are all sequences of bytes on disk. The CPU can read bytes, compare bytes, add bytes, multiply bytes, jump based on byte values. That is sufficient to process any file format in existence. The meaning of the bytes exists only in the algorithm the programmer wrote. The CPU executes the algorithm blindly.
+
+### Everything on a Computer Is Bytes
+
+```
+A video file:
+  Not a stream of pictures the CPU understands
+  Just bytes: 00 00 00 18 66 74 79 70 6D 70 34 32...
+  These bytes follow the H.264/MP4 specification format
+  The CPU reads them, processes them according to the algorithm
+  The algorithm produces pixel values for the display
+
+An audio file (.mp3):
+  Just bytes: FF FB 90 00 00 0F F0 00 00 69 00 00 00 08...
+  These bytes follow the MP3 specification format
+  The algorithm produces PCM sample values for the sound card
+
+A JPEG image:
+  Just bytes: FF D8 FF E0 00 10 4A 46 49 46 00 01...
+  FF D8 = JPEG magic bytes (every JPEG starts here)
+  The algorithm decodes these into RGB pixel values
+
+A PDF:
+  Just bytes forming the PDF specification format
+  The PDF renderer algorithm reads them, draws text and graphics
+
+The CPU treats ALL of these identically:
+  Load bytes from disk into RAM
+  Pass pointer to algorithm
+  Algorithm reads bytes, applies mathematical operations
+  Produces output (pixels, samples, text) that goes to hardware
+```
+
+### How H.264 Video Compression Works
+
+H.264 (used in .mp4 files) compresses video by exploiting two facts: most pixels in a frame are similar to neighbouring pixels, and most frames are similar to previous frames.
+
+```
+RAW VIDEO SIZE PROBLEM:
+  1080p at 60fps: 1920 × 1080 × 3 bytes (RGB) × 60 = 373 MB/s
+  A 2-hour film: 373 MB/s × 7200s = 2.7 TB
+  
+  H.264 compressed: ~5 GB for the same film (540× smaller)
+
+H.264 ENCODING ALGORITHM:
+  (Everything below is algorithms — the CPU executes primitive instructions)
+
+  Step 1: Colour space conversion
+    Convert RGB → YCbCr (luminance + two colour channels)
+    Human vision is more sensitive to brightness than colour
+    Colour channels can be at half resolution without visible loss
+    CPU operations: multiply each pixel by a 3×3 matrix
+                    MOV, MUL, ADD instructions on arrays of bytes
+
+  Step 2: Divide frame into macroblocks
+    Each frame is divided into 16×16 pixel regions (macroblocks)
+    CPU operations: nested loops, array index arithmetic
+                    MOV, ADD, CMP instructions
+
+  Step 3: Motion estimation (the key compression insight)
+    Frame N and Frame N+1 are similar
+    Instead of storing Frame N+1 fully, store:
+      "this macroblock moved 3 pixels right and 2 pixels down"
+    That motion vector takes 4 bytes vs 768 bytes for the raw block
+    Algorithm: compare current macroblock against regions in previous frame
+               find the region with the smallest difference
+               store the offset (the motion vector) instead of the pixels
+    CPU operations: SUB (find differences), loops, CMP (find minimum)
+
+  Step 4: DCT (Discrete Cosine Transform)
+    For macroblocks that cannot be predicted from previous frame:
+    Apply DCT to convert spatial pixel data to frequency data
+    Low frequencies = broad features (sky colour, large shapes)
+    High frequencies = fine detail (hair texture, sharp edges)
+    Human eye is less sensitive to high-frequency errors
+    Algorithm: multiply 8×8 pixel block by DCT matrix
+    CPU operations: MUL, ADD on 64 values — pure arithmetic
+
+  Step 5: Quantisation (where quality loss happens)
+    Divide each DCT coefficient by a quantisation factor
+    High-frequency coefficients become small → round to zero → discard
+    Lower quality setting = larger quantisation factors = more zeros
+    Algorithm: divide coefficient array by quantisation matrix
+    CPU operations: DIV, rounding
+
+  Step 6: Entropy coding
+    The quantised coefficients contain many zeros
+    Run-length encode: "32 zeros" instead of 32 zero bytes
+    Huffman/CABAC: common patterns get shorter bit codes
+    Algorithm: statistical frequency analysis, tree building, bit packing
+    CPU operations: CMP, conditional jumps, bit shifts, OR operations
+
+  Output: compressed bitstream
+  CPU never knew this was a video
+  CPU only computed: matrix multiplications, comparisons, divisions
+
+H.264 DECODING (what happens during playback):
+  Read compressed bytes from file
+  Entropy decode → get quantised DCT coefficients
+  Dequantise → get DCT coefficients
+  Inverse DCT → get residual pixel values
+  Add motion compensation → reconstruct full frame
+  Convert YCbCr → RGB
+  Write RGB pixels to frame buffer → display shows image
+  All reverse operations, same arithmetic, same CPU instructions
+```
+
+### How MP3 Audio Compression Works
+
+```
+RAW AUDIO SIZE:
+  CD quality: 44100 samples/s × 16 bits × 2 channels = 1411 Kbps
+  MP3 at 128 Kbps: 11× compression
+
+MP3 ENCODING ALGORITHM:
+
+  Step 1: Filter bank
+    Split audio signal into 32 frequency subbands
+    Algorithm: convolve audio samples with 512-coefficient filter
+    CPU operations: MUL, ADD on arrays of samples (dot products)
+
+  Step 2: Psychoacoustic model
+    Human ear has masking: loud sounds hide quiet sounds near them
+    A 1000Hz tone at 80dB makes nearby frequencies inaudible below 60dB
+    Algorithm: compute masking thresholds from current audio spectrum
+               identify which frequencies are inaudible right now
+    CPU operations: FFT algorithm (divide and conquer, complex arithmetic)
+
+  Step 3: Bit allocation
+    Assign more bits to audible frequencies, fewer to masked frequencies
+    Frequencies below masking threshold get zero bits (discarded)
+    Algorithm: iterative optimisation loop
+    CPU operations: comparison loops, accumulation
+
+  Step 4: Quantisation and encoding
+    Quantise the allocated bits, apply Huffman coding
+    CPU operations: division, table lookups, bit manipulation
+
+  Output: .mp3 bytes containing only perceptually important audio
+
+DECODING: exact reverse
+  Read bits, Huffman decode, dequantise, inverse filter bank
+  Output PCM samples to OS audio system → sound card → speaker
+
+Every step: arrays of numbers, arithmetic operations
+CPU never heard the music
+```
+
+### Why Dedicated Hardware Exists
+
+The CPU can decode H.264 and MP3 in software using its general-purpose ALU. FFmpeg does exactly this. But dedicated hardware is far more efficient:
+
+```
+SOFTWARE DECODE (CPU running FFmpeg):
+  4K H.265 decode: uses 30-40% of modern CPU
+  Power consumption: 15-25W for decode alone
+  
+HARDWARE DECODE (dedicated video decoder chip):
+  Same 4K H.265 decode: uses <1% of CPU
+  Power consumption: 0.5-2W
+  Why: the H.265 algorithm is implemented as fixed circuits
+       no fetch-decode-execute overhead
+       data flows through the circuit automatically
+       exactly like the systolic arrays in Chapter 23
+
+CPU ALU: general purpose, can do anything, moderate efficiency
+FIXED CIRCUIT: does one thing, maximum efficiency, cannot be changed
+
+The mathematics is identical.
+The implementation differs: software algorithm vs hardwired circuit.
+
+Examples of dedicated decode/encode silicon:
+  GPU: thousands of cores for parallel matrix math
+  NPU: systolic array for neural network matrix multiplication
+  VPU: H.264/H.265/AV1 codec in silicon
+  ISP: camera pipeline in silicon (demosaic, denoise, white balance)
+  DSP: audio filtering in silicon
+```
+
+---
+
+## How the First Assembler and First Compiler Were Built
+
+This is the bootstrapping problem — one of the deepest questions in computing. The answer requires understanding four distinct historical stages.
+
+### The Core Insight — The CPU Cares Only About Bytes in Memory
+
+The CPU does not know how those bytes got into memory. It does not know if a human toggled them in via switches, if an assembler produced them, or if a compiler generated them. It only knows: fetch bytes, decode opcode, execute, repeat.
+
+This means:
+
+```
+Any program, written by any method, that produces correct bytes in memory
+will run correctly on the CPU.
+
+The question "how did you get those bytes there?" is irrelevant to the CPU.
+It is only relevant to the humans building the tools.
+```
+
+### Stage 0 — The Human Is the Assembler (1940s)
+
+```
+SITUATION:
+  CPU built and working
+  ISA manual written and published
+  No software tools of any kind
+  Not even an assembler
+
+PROGRAMMER'S COMPLETE WORKFLOW:
+
+  1. Design the algorithm on paper in plain language
+     Example: "sort these 10 numbers using bubble sort"
+
+  2. Translate to pseudocode steps:
+     "compare element at position i with element at position i+1"
+     "if first is greater, swap them"
+     "loop through all positions"
+
+  3. Open ISA manual, find the instruction for each step:
+     "compare: opcode is 0x39, followed by ModRM byte"
+     "conditional jump if greater: opcode is 0x7F, then offset byte"
+     "swap: three MOV instructions"
+
+  4. Calculate all addresses and offsets:
+     "the jump target is 12 bytes back from here"
+     "12 in two's complement 8-bit = 0xF4"
+
+  5. Write binary values in notebook:
+     Address 0000: 0x39 0xC8     (CMP EAX, ECX)
+     Address 0002: 0x7F 0x06     (JG skip_swap)
+     Address 0004: 0x89 0xC2     (MOV EDX, EAX)
+     ...
+
+  6. Sit at front panel, toggle each byte into memory
+     Set 8 switches: 0 0 1 1 1 0 0 1 (= 0x39)
+     Press DEPOSIT
+     Set 8 switches: 1 1 0 0 1 0 0 0 (= 0xC8)
+     Press DEPOSIT
+     Repeat for every byte in the notebook
+
+  7. Set address switches to 0x0000, press LOAD ADDR, press RUN
+
+THE HUMAN PERFORMED:
+  Lexical analysis:    reading their own notation in the notebook
+  Parsing:             understanding the algorithm structure
+  Register allocation: deciding which register holds which variable
+  Code generation:     finding the correct opcode for each operation
+  Assembly:            toggling binary into memory
+  
+ALL OF THIS WAS DONE WITHOUT ANY SOFTWARE.
+The entire process existed only in the human brain and the notebook.
+
+A sorting algorithm for 10 numbers required approximately:
+  40-60 instructions × 2-4 bytes each = 80-240 bytes
+  80-240 DEPOSIT operations at the front panel
+  Each byte requiring correctly setting 8 switches
+  Plus calculating all jump offsets by hand
+  A single wrong bit anywhere caused incorrect behaviour
+```
+
+### Stage 1 — The First Assembler Built By Hand
+
+```
+MOTIVATION:
+  The task of looking up opcodes in a manual is mechanical
+  The task of converting "MOV" text to 0x89 bytes is mechanical
+  A machine can do mechanical tasks faster and with fewer errors
+  Someone needed to write a program that reads text and outputs opcodes
+
+THE INSIGHT:
+  An assembler's algorithm is simple:
+    Read characters
+    When you see "MOV": output the MOV opcode bytes
+    When you see "ADD": output the ADD opcode bytes
+    When you see a register name: output its encoding
+    When you see a number: convert ASCII digits to binary value
+    When you see a label: record its address, patch references later
+  
+  This algorithm, while tedious to implement, is not complex.
+  Someone could calculate every byte of this program by hand.
+
+HOW IT WAS ACTUALLY DONE (EDSAC team, Cambridge, late 1940s - 1951):
+
+  Step 1: Design the assembler algorithm on paper
+    What characters indicate which instructions?
+    What is the notation going to be?
+    How will labels and addresses be handled?
+    The team agreed on a notation (the first assembly language)
+
+  Step 2: Write the assembler in that notation (on paper, not yet runnable)
+    COMPARE: AL, 'M'    (is current character M?)
+    JUMP IF EQUAL: handle_MOV
+    COMPARE: AL, 'A'
+    JUMP IF EQUAL: handle_ADD
+    ...
+    handle_MOV:
+      OUTPUT: 0x89     (MOV opcode byte)
+      ...
+
+  Step 3: Translate that notation to binary by hand
+    Open ISA manual
+    "COMPARE AL with immediate" = opcode 0x3C, then the immediate byte
+    "JUMP IF EQUAL" = opcode 0x74, then the signed offset byte
+    Calculate every address and offset by hand
+    Write binary values in notebook
+
+  Step 4: Toggle all bytes into memory using front panel switches
+    This took hours to days for an assembler of several hundred bytes
+
+  Step 5: Run the assembler
+    Feed source text through paper tape reader or keyboard
+    Assembler reads text, outputs binary machine code
+
+  Step 6: The assembler assembles a better version of itself
+    Write improved assembler in the new notation (text file)
+    Feed through the working assembler
+    Get better assembler as output
+    Discard the hand-toggled version
+    BOOTSTRAP COMPLETE
+
+WHAT THE FIRST ASSEMBLER ACTUALLY DID (simplified):
+
+  read_char:
+    AL = next character from input
+
+    if AL == 'M': goto check_MOV
+    if AL == 'A': goto check_ADD
+    if AL == 'J': goto check_JMP
+    if AL == 'R': goto check_RET
+    if AL == ';': skip until newline (comment)
+    if AL == 0:   done (end of input)
+    goto read_char
+
+  check_MOV:
+    read next char, check it is 'O'
+    read next char, check it is 'V'
+    read operand specifications
+    output correct MOV opcode byte(s)
+    goto read_char
+
+  check_ADD:
+    read next char, check it is 'D'
+    read next char, check it is 'D'
+    read operand specifications
+    output ADD opcode byte(s)
+    goto read_char
+
+  EVERY ONE OF THESE OPERATIONS is implemented as:
+    MOV AL, [input_pointer]   (read a byte from input)
+    CMP AL, 'M'               (compare with character M)
+    JE  check_MOV             (jump if equal)
+    MOV [output_pointer], 0x05 (write opcode byte to output)
+    INC output_pointer         (advance output position)
+  
+  All primitive ISA instructions.
+  Calculated by hand from the ISA manual.
+  Toggled into memory via front panel switches.
+  Running on the CPU as just another program.
+```
+
+### Stage 2 — The First Compiler (Written in Assembly)
+
+```
+MOTIVATION:
+  Assembly is still tedious
+  Managing registers by hand is error-prone
+  Calling conventions must be handled manually
+  Someone wants to write: result = a + b;
+  Instead of: MOV EAX, [a] / ADD EAX, [b] / MOV [result], EAX
+
+THE INSIGHT:
+  The translation from "result = a + b" to three assembly instructions
+  is also mechanical and rule-based
+  A program could do this translation
+
+THE FIRST COMPILER'S ALGORITHM:
+
+  Read source text character by character
+  Identify tokens: identifiers, operators, numbers, punctuation
+  (This is the lexer — implemented as character comparison loops)
+
+  Recognise patterns:
+    IDENTIFIER '=' EXPRESSION
+    EXPRESSION = IDENTIFIER OPERATOR IDENTIFIER
+
+  Apply code generation rules:
+    When you see: A = B + C
+    Emit:
+      "MOV EAX, [" + B + "]"
+      "ADD EAX, [" + C + "]"
+      "MOV [" + A + "], EAX"
+
+  This rule is written as assembly code:
+    compare current token type with EQUALS
+    if match: call emit_assignment_code
+    
+    emit_assignment_code:
+      write "MOV EAX, [" to output buffer
+      write left-hand side variable name
+      write "]" to output buffer
+      write newline
+      ...
+
+HOW IT WAS BUILT:
+
+  Someone wrote these rules as an assembly language program
+  Fed that assembly through the existing assembler
+  Got a compiler binary
+  
+  The compiler's output was assembly text
+  That text was fed through the assembler
+  The assembler produced machine code
+  Chain: source code → compiler → assembly → assembler → machine code
+
+The compiler had these limitations:
+  Only handled simple expressions
+  No functions initially
+  No complex control flow
+  No type system
+
+But it worked. And it could be improved.
+
+IMPROVING THE COMPILER:
+  Write a better compiler in the language the first compiler handles
+  Feed it through the first compiler → get better compiler binary
+  Each iteration added more features
+  Eventually: the compiler handles enough of its own language
+  that the compiler can be rewritten in its own language
+  This is the self-hosting moment
+```
+
+### Stage 3 — The Complete Bootstrap Chain
+
+```
+EVERY TOOL IN USE TODAY traces back through this chain:
+
+1940s: HUMANS ARE THE TOOLS
+   Human brain = assembler + compiler + linker
+   Front panel switches = keyboard + storage
+   ISA manual = opcode table
+   Result: hand-calculated machine code programs
+
+1949-1951: EDSAC INITIAL ORDERS (first bootstrap)
+   31 instructions hand-wired into read-only store
+   Reads programs from paper tape automatically
+   First stored-program computer running user programs
+
+Early 1950s: FIRST ASSEMBLER
+   Calculated by hand as machine code
+   Toggled into memory via switches
+   Reads assembly text → outputs machine code
+   Bootstraps: assembler assembles better assembler
+
+Mid 1950s: FIRST HIGH-LEVEL LANGUAGE COMPILERS
+   FORTRAN (IBM, 1957): first commercially successful compiler
+   Written in assembly by John Backus's team at IBM
+   Translated mathematical formulas to machine code
+   Scientists could write: X = A + B*C instead of assembly
+
+Late 1950s-1960s: COMPILER THEORY DEVELOPS
+   Chomsky's grammar hierarchy (1956)
+   Regular expressions and finite automata (Kleene, Thompson)
+   Compiler design becomes a formal discipline
+   Compilers become self-hosting
+
+1972: C LANGUAGE
+   Dennis Ritchie writes C compiler in assembly and BCPL
+   Unix kernel rewritten in C
+   C compiler compiles itself (self-hosting)
+   Portability: recompile → run on different CPU architecture
+
+1987: GCC (GNU COMPILER COLLECTION)
+   Written in C, compiles C
+   Compiled by earlier C compilers
+   Eventually compiles itself
+   Used to compile Linux kernel
+
+1991: LINUX KERNEL
+   Written in C
+   Compiled by GCC
+   GCC compiled by older GCC
+   ...chain continues back...
+
+2024: YOUR PROGRAM
+   gcc hello.c -o hello
+   GCC reads hello.c (GCC itself compiled by older GCC)
+   Generates x86-64 machine code bytes
+   Kernel loads ELF into memory
+   CPU fetches bytes, decoder fires, ALU executes
+   Output appears on your terminal
+   
+   The bytes in that binary trace back through:
+   GCC → older GCC → even older GCC → first C compiler (assembly)
+   → first assembler (machine code hand-calculated)
+   → EDSAC initial orders (wired into silicon)
+   → a human at a front panel in Cambridge in 1949
+     setting binary switches one bit at a time
+
+EVERY COMPILER, EVERY OPERATING SYSTEM, EVERY PROGRAM
+you have ever used or written is built on this chain.
+The chain never broke.
+The first link was a human hand on a toggle switch.
+```
+
+### Why This Answers Both Questions Together
+
+```
+THE CPU ONLY KNOWS PRIMITIVE INSTRUCTIONS → TRUE, ALWAYS
+  Add, subtract, compare, jump, load, store
+  These have not changed since the first stored-program computers
+  Every program ever written executes as these primitives
+
+PROGRAMS IMPLEMENT ALGORITHMS USING THOSE PRIMITIVES → TRUE
+  Video compression: matrix math, comparisons, bit manipulation
+  Audio compression: convolution, FFT, quantisation
+  Operating system: memory management, scheduling, device control
+  Compiler: text processing, pattern matching, code emission
+  All of the above = loops, arithmetic, comparisons, memory access
+
+THE BOOTSTRAP RESOLVES THE APPARENT CONTRADICTION:
+  "How did compilers get built if CPUs only understand primitives?"
+  
+  Answer: the first tools were built by humans performing
+  the same transformation that tools later automated.
+  
+  The human was the first compiler.
+  The ISA manual was the first opcode table.
+  The notebook was the first symbol table.
+  The front panel was the first keyboard.
+  
+  Then those humans built tools to replace themselves.
+  Those tools built better tools.
+  That process has continued for 75 years.
+  It never required the CPU to understand anything beyond
+  its primitive instruction set.
+  
+  The CPU understood only: fetch, decode, execute.
+  Everything else was humans and their algorithms.
+```
+
+
+
+---
+
+## Building the First Assembler From Scratch — Every Byte Calculated By Hand
+
+This section shows exactly how the first assembler was built when the CPU understood only primitive ISA instructions and no tools existed. Every step is shown with actual bytes, actual addresses, and exactly how a human calculated them from an ISA manual.
+
+### The Exact Problem
+
+The CPU understands only raw bytes. The decoder fires on specific bit patterns:
+
+```
+Byte 0x3C at decoder input:
+  Pattern detector for 0x3C fires
+  Control wire activates: "compare AL with next byte"
+  Flags set based on result
+
+Byte 0x74 at decoder input:
+  Pattern detector for 0x74 fires
+  Control wire activates: "if ZF=1, add next byte to instruction pointer"
+
+Byte 0x89 at decoder input:
+  Pattern detector for 0x89 fires
+  Control wire activates: "move register to register/memory"
+  Read ModRM byte next
+
+The CPU does not understand MOV, CMP, JE.
+It understands 0x89, 0x3C, 0x74.
+The assembler converts text to those bytes.
+That conversion is itself a sequence of primitive CPU operations.
+```
+
+### What the Assembler Must Do — Broken Into Primitive Steps
+
+```
+Goal: read "MOV AL, 5" from paper tape → output bytes 0xB0 0x05
+
+Required primitive steps:
+  1. Read character 'M' from input
+  2. Read character 'O' from input
+  3. Read character 'V' from input
+  4. Compare each character to the letter in the opcode table
+  5. All three match 'M','O','V' → this is MOV instruction
+  6. Skip the space character after MOV
+  7. Read 'A' from input
+  8. Read 'L' from input
+  9. Compare "AL" to known register names
+ 10. AL maps to register encoding 0x00
+ 11. Read ',' from input, skip it
+ 12. Read '5' from input (ASCII byte 0x35)
+ 13. Convert ASCII 0x35 to numeric value 5 (subtract 0x30)
+ 14. MOV AL with immediate byte = opcode 0xB0
+ 15. Write byte 0xB0 to output
+ 16. Write byte 0x05 to output
+ 17. Return to step 1 for next instruction
+
+Every one of these 17 steps is a primitive CPU operation:
+load byte, compare byte, jump if equal, store byte, add/subtract.
+Nothing else.
+```
+
+### The ISA Being Used — Intel 8080 (1974)
+
+We use the Intel 8080 — the CPU in the Altair 8800 (1975) that started the personal computer revolution. Simple 8-bit architecture. The programmer has this manual open on the desk.
+
+```
+INTEL 8080 ISA MANUAL ENTRIES USED:
+
+Opcode  Mnemonic        Bytes  Operation
+──────  ──────────────  ─────  ──────────────────────────────────────
+0x3E    MVI A, byte     2      Load immediate byte into register A
+0x3A    LDA addr        3      Load A from 16-bit memory address
+0x32    STA addr        3      Store A to 16-bit memory address
+0x7E    MOV A, M        1      Load A from memory at address in HL
+0x77    MOV M, A        1      Store A to memory at address in HL
+0x6F    MOV L, A        1      Copy A into register L
+0x67    MOV H, A        1      Copy A into register H
+0x7D    MOV A, L        1      Copy L into A
+0x7C    MOV A, H        1      Copy H into A
+0x23    INX H           1      Increment HL register pair by 1
+0x13    INX D           1      Increment DE register pair by 1
+0x21    LXI H, addr     3      Load 16-bit address into HL
+0x11    LXI D, addr     3      Load 16-bit address into DE
+0xFE    CPI byte        2      Compare A with immediate byte, set flags
+0xBE    CMP M           1      Compare A with byte at memory[HL]
+0xCA    JZ  addr        3      Jump to addr if ZF=1 (zero flag set)
+0xC2    JNZ addr        3      Jump to addr if ZF=0 (zero flag not set)
+0xC3    JMP addr        3      Jump unconditionally to addr
+0xCD    CALL addr       3      Push return addr to stack, jump to addr
+0xC9    RET             1      Pop return addr from stack, jump there
+0x76    HLT             1      Halt execution
+```
+
+### Step 1 — Memory Layout (Decided Before Writing One Instruction)
+
+The programmer draws this in their notebook:
+
+```
+ADDRESS RANGE    CONTENTS                     SIZE
+────────────     ──────────────────────────   ──────
+0x0000-0x01FF    Assembler code               512 bytes reserved
+0x0100-0x011A    Opcode lookup table (data)   26 bytes (inside code area)
+0x0200-0x02FF    Input buffer                 256 bytes
+0x0300-0x03FF    Output buffer                256 bytes
+0x03F0           input_ptr  (low byte)         1 byte
+0x03F1           input_ptr  (high byte)        1 byte
+0x03F2           output_ptr (low byte)         1 byte
+0x03F3           output_ptr (high byte)        1 byte
+0x03F4           current_char                  1 byte
+0x03FE-0x03FF    Stack (grows down)           small
+```
+
+### Step 2 — The Opcode Table (Data in Memory)
+
+This is just bytes sitting in memory at address 0x0100. The assembler's search code will scan through it:
+
+```
+ADDRESS  BYTES              MEANING
+───────  ─────────────────  ────────────────────────────────────
+0x0100   4D 4F 56 00 B8     'M','O','V',0x00, opcode=0xB8
+                             MOV A,immediate → opcode 0xB8
+0x0105   41 44 44 00 80     'A','D','D',0x00, opcode=0x80
+                             ADD A,B → opcode 0x80
+0x010A   53 55 42 00 90     'S','U','B',0x00, opcode=0x90
+                             SUB A,B → opcode 0x90
+0x010F   4A 4D 50 00 C3     'J','M','P',0x00, opcode=0xC3
+                             JMP → opcode 0xC3
+0x0114   48 4C 54 00 76     'H','L','T',0x00, opcode=0x76
+                             HLT → opcode 0x76
+0x0119   FF                  end-of-table marker
+
+Format: 3 ASCII chars + 0x00 null + 1 opcode byte = 5 bytes per entry
+```
+
+The programmer writes these bytes in the notebook. They are just data. The CPU never "sees" them as mnemonics — just bytes to be compared against.
+
+### Step 3 — Write skip_whitespace Routine
+
+Pseudocode:
+```
+skip_whitespace:
+  load byte from input buffer at input_ptr
+  if byte == 0x20 (space):   increment input_ptr, loop
+  if byte == 0x09 (tab):     increment input_ptr, loop
+  if byte == 0x0A (newline): increment input_ptr, loop
+  else: return (non-whitespace found, stays at input_ptr)
+```
+
+Programmer translates to 8080 machine code. For each instruction they look it up in the ISA manual and write the bytes. They calculate every address by counting bytes from the start:
+
+```
+ADDRESS  BYTES        NOTATION (human notes only)   EXPLANATION
+───────  ──────────── ───────────────────────────── ───────────────────────────
+0x0020   21 F0 03     LXI H, 0x03F0                 HL = addr of input_ptr
+0x0023   7E           MOV A, M                      A = input_ptr low byte
+0x0024   6F           MOV L, A                      L = low byte
+0x0025   23           INX H                         point to high byte
+0x0026   7E           MOV A, M                      A = input_ptr high byte
+0x0027   67           MOV H, A                      H = high byte
+                                                     HL now = input pointer value
+0x0028   7E           MOV A, M                      A = char at input position
+0x0029   3A F4 03     STA 0x03F4                    save to current_char
+0x002C   FE 20        CPI 0x20                      compare with space
+0x002E   CA 3F 00     JZ  advance_input             if space: jump to 0x003F
+0x0031   FE 09        CPI 0x09                      compare with tab
+0x0033   CA 3F 00     JZ  advance_input             if tab: jump to 0x003F
+0x0036   FE 0A        CPI 0x0A                      compare with newline
+0x0038   CA 3F 00     JZ  advance_input             if newline: jump to 0x003F
+0x003B   C9           RET                           not whitespace — return
+
+advance_input: (0x003F)
+0x003F   23           INX H                         HL++ (advance input ptr)
+0x0040   7D           MOV A, L                      get new ptr low byte
+0x0041   32 F0 03     STA 0x03F0                    store new input_ptr low
+0x0044   7C           MOV A, H                      get new ptr high byte
+0x0045   32 F1 03     STA 0x03F1                    store new input_ptr high
+0x0048   C3 20 00     JMP 0x0020                    loop back to check next char
+```
+
+The programmer verifies: `JZ advance_input` at address 0x002E needs target 0x003F. They write `CA 3F 00` (little-endian: low byte first). They check: `0x003F` = `0x3F` low byte, `0x00` high byte. Correct.
+
+### Step 4 — Write read_char Routine
+
+```
+ADDRESS  BYTES        EXPLANATION
+───────  ──────────── ──────────────────────────────────────────
+0x0050   21 F0 03     LXI H, 0x03F0     HL = addr of input_ptr
+0x0053   7E           MOV A, M          A = low byte of input_ptr
+0x0054   6F           MOV L, A          L = low byte
+0x0055   23           INX H
+0x0056   7E           MOV A, M          A = high byte of input_ptr
+0x0057   67           MOV H, A          HL = actual input pointer
+0x0058   7E           MOV A, M          A = character at input_ptr
+0x0059   32 F4 03     STA 0x03F4        save to current_char
+0x005C   23           INX H             advance input pointer
+0x005D   7D           MOV A, L          get new low byte
+0x005E   32 F0 03     STA 0x03F0        store new input_ptr low
+0x0061   7C           MOV A, H          get new high byte
+0x0062   32 F1 03     STA 0x03F1        store new input_ptr high
+0x0065   C9           RET               return (A = character read)
+```
+
+### Step 5 — Write compare_3chars Routine
+
+Compares 3 bytes in input buffer against 3 bytes in opcode table:
+
+```
+INPUT:  HL = pointer to mnemonic in opcode table
+        DE = pointer to 3 chars read from input (at 0x0200)
+RETURN: ZF=1 if all 3 match, ZF=0 if any differ
+
+ADDRESS  BYTES        EXPLANATION
+───────  ──────────── ──────────────────────────────────────────
+0x0070   1A           LDAX D            A = input char (memory[DE])
+0x0071   BE           CMP M             compare with table char (memory[HL])
+0x0072   C2 7E 00     JNZ no_match      if different: jump to 0x007E
+0x0075   23           INX H             advance table pointer
+0x0076   13           INX D             advance input pointer
+0x0077   1A           LDAX D            A = next input char
+0x0078   BE           CMP M             compare with next table char
+0x0079   C2 7E 00     JNZ no_match      if different: jump to 0x007E
+0x007C   23 13        INX H, INX D      advance both
+(third character comparison follows same pattern)
+0x007E   23           INX H             point to null byte in table
+0x007F   7E           MOV A, M          load null byte
+0x0080   FE 00        CPI 0x00          is it null? (end of mnemonic)
+0x0082   C9           RET               return with ZF=1 if matched
+
+no_match: (0x007E — same address, different path)
+          (ZF=0 already set by failed CMP — just return)
+0x007E   C9           RET
+```
+
+### Step 6 — Write search_table Routine
+
+```
+INPUT:  DE = input buffer address (0x0200) holding mnemonic
+OUTPUT: A = opcode byte if found, or 0xFF if not found
+
+ADDRESS  BYTES        EXPLANATION
+───────  ──────────── ──────────────────────────────────────────
+0x0090   21 00 01     LXI H, 0x0100     HL = start of opcode table
+
+table_loop: (0x0093)
+0x0093   7E           MOV A, M          load first byte of entry
+0x0094   FE FF        CPI 0xFF          is it end-of-table marker?
+0x0096   CA B2 00     JZ not_found      yes: jump to 0x00B2
+
+0x0099   CD 70 00     CALL 0x0070       call compare_3chars
+                                         (HL=table entry, DE=input)
+0x009C   CA A8 00     JZ  found         ZF=1: match found, jump to 0x00A8
+
+(no match: advance HL by 5 to next table entry)
+0x009F   23           INX H             skip past mnemonic+null+opcode
+0x00A0   23           INX H             (5 bytes per entry)
+0x00A1   23           INX H
+0x00A2   23           INX H
+0x00A3   23           INX H
+0x00A4   C3 93 00     JMP table_loop    try next entry
+
+found: (0x00A8)
+(HL currently points at last char of matched mnemonic)
+(advance 2 more bytes to reach opcode byte)
+0x00A8   23           INX H             skip to null byte
+0x00A9   23           INX H             skip null, now at opcode byte
+0x00AA   7E           MOV A, M          A = opcode byte
+                                        (now write A to output buffer)
+0x00AB   21 F2 03     LXI H, 0x03F2     HL = addr of output_ptr
+0x00AE   7E           MOV A, M          ... (load output pointer)
+... (same pointer-loading sequence as read_char but for output)
+0x00B0   77           MOV M, A          store opcode to output[output_ptr]
+0x00B1   C9           RET
+
+not_found: (0x00B2)
+0x00B2   3E FF        MVI A, 0xFF       A = error code
+0x00B4   76           HLT               halt on error
+```
+
+### Step 7 — Write the Main Loop
+
+```
+ADDRESS  BYTES        EXPLANATION
+───────  ──────────── ──────────────────────────────────────────
+main: (0x0000)
+0x0000   3E 00        MVI A, 0x00       initialise
+0x0002   32 F0 03     STA 0x03F0        input_ptr low = 0
+0x0005   3E 02        MVI A, 0x02
+0x0007   32 F1 03     STA 0x03F1        input_ptr high = 0x02
+                                         (ptr = 0x0200 = input buffer)
+0x000A   3E 00        MVI A, 0x00
+0x000C   32 F2 03     STA 0x03F2        output_ptr low = 0
+0x000F   3E 03        MVI A, 0x03
+0x0011   32 F3 03     STA 0x03F3        output_ptr high = 0x03
+                                         (ptr = 0x0300 = output buffer)
+
+main_loop: (0x0014)
+0x0014   CD 20 00     CALL 0x0020       call skip_whitespace
+0x0017   3A F4 03     LDA 0x03F4        load current_char
+0x001A   FE 00        CPI 0x00          is it null? (end of input)
+0x001C   CA 1F 00     JZ done           yes: halt
+
+0x001F   11 00 02     LXI D, 0x0200     DE = input buffer (store mnemonic here)
+0x0022   CD 50 00     CALL 0x0050       read_char (1st char of mnemonic)
+0x0025   3A F4 03     LDA 0x03F4        get char
+0x0028   1A           LDAX D            (store it to 0x0200)
+... (read 2nd and 3rd chars similarly)
+0x0029   CD 90 00     CALL 0x0090       search_table (find opcode, emit it)
+0x002C   C3 14 00     JMP main_loop     process next instruction
+
+done: (0x001F — note: overlapping with next instruction, adjust addresses)
+0x002F   76           HLT
+```
+
+### Step 8 — The Complete Notebook
+
+After working through all routines, the programmer's notebook contains approximately 200 bytes total:
+
+```
+COMPLETE BYTE MAP (summary):
+
+0x0000-0x002F  Main initialisation and loop       (48 bytes)
+0x0020-0x004B  skip_whitespace routine             (44 bytes)
+0x0050-0x0065  read_char routine                   (22 bytes)
+0x0070-0x007F  compare_3chars routine              (16 bytes)
+0x0090-0x00B4  search_table routine                (37 bytes)
+0x0100-0x0119  Opcode table data                   (26 bytes)
+               Total: ~193 bytes
+```
+
+### Step 9 — Toggle Into Memory
+
+The programmer sits at the front panel. For every byte in the notebook:
+
+```
+For byte 0x21 at address 0x0020:
+  Binary: 0010 0001
+  
+  Set address switches: 0000 0000 0010 0000  (= 0x0020)
+  Press LOAD ADDR
+
+  Set data switches:
+    Switch 7: down (0)
+    Switch 6: down (0)
+    Switch 5: up   (1)
+    Switch 4: down (0)
+    Switch 3: down (0)
+    Switch 2: down (0)
+    Switch 1: down (0)
+    Switch 0: up   (1)
+  Press DEPOSIT
+  Address register automatically goes to 0x0021
+
+For byte 0xF0 at address 0x0021:
+  Binary: 1111 0000
+  Set data switches: up up up up down down down down
+  Press DEPOSIT
+
+For byte 0x03 at address 0x0022:
+  Binary: 0000 0011
+  Set data switches: down down down down down down up up
+  Press DEPOSIT
+
+... repeat for all 193 bytes ...
+
+Load opcode table data (at 0x0100):
+  Set address switches to 0x0100
+  Press LOAD ADDR
+  Toggle 0x4D ('M'):  0100 1101
+  Press DEPOSIT
+  Toggle 0x4F ('O'):  0100 1111
+  Press DEPOSIT
+  Toggle 0x56 ('V'):  0101 0110
+  Press DEPOSIT
+  Toggle 0x00 (null): 0000 0000
+  Press DEPOSIT
+  Toggle 0xB8 (opcode): 1011 1000
+  Press DEPOSIT
+  ... continue for all table entries ...
+```
+
+Total DEPOSIT operations: approximately 220.
+Time required: 1-3 hours.
+One wrong switch position: program executes incorrectly.
+
+### Step 10 — Load Source Text and Run
+
+```
+Punch assembly source text onto paper tape:
+  Characters: 'M','O','V',' ','A',',','5',0x0A,'A','D','D',...,0x00
+
+Load tape into reader at address 0x0200:
+  Reader feeds ASCII bytes into memory
+  0x0200: 0x4D ('M')
+  0x0201: 0x4F ('O')
+  0x0202: 0x56 ('V')
+  0x0203: 0x20 (' ')
+  0x0204: 0x41 ('A')
+  0x0205: 0x2C (',')
+  0x0206: 0x35 ('5')
+  0x0207: 0x0A (newline)
+  ...
+
+Set address switches to 0x0000 (start of assembler)
+Press LOAD ADDR
+Press RUN
+
+CPU executes:
+  0x0000: MVI A, 0x00     → A = 0
+  0x0002: STA 0x03F0      → memory[0x03F0] = 0
+  ... (initialise pointers) ...
+  0x0014: CALL 0x0020     → skip_whitespace
+    0x0020: LXI H, 0x03F0  → HL = 0x03F0
+    0x0023: MOV A, M       → A = memory[0x03F0] = 0x00 (low byte of ptr)
+    0x0024: MOV L, A       → L = 0x00
+    ... load HL = 0x0200 (input pointer) ...
+    0x0028: MOV A, M       → A = memory[0x0200] = 0x4D ('M')
+    0x0029: STA 0x03F4     → current_char = 'M'
+    0x002C: CPI 0x20       → compare 'M' with space → not equal, ZF=0
+    0x002E: JZ advance     → ZF=0, do not jump
+    0x0031: CPI 0x09       → compare 'M' with tab → not equal
+    0x0033: JZ advance     → ZF=0, do not jump
+    0x0036: CPI 0x0A       → compare 'M' with newline → not equal
+    0x0038: JZ advance     → ZF=0, do not jump
+    0x003B: RET            → return to main loop
+  (current_char = 'M', input not whitespace)
+
+  0x0017: LDA 0x03F4     → A = 'M'
+  0x001A: CPI 0x00       → 'M' != null, ZF=0
+  0x001C: JZ done        → ZF=0, do not jump — continue
+
+  ... (reads 'M','O','V' into DE area, calls search_table) ...
+
+  search_table executes:
+    Loads 0x0100 into HL (start of table)
+    Loads first entry: 0x4D ('M')
+    compare_3chars called:
+      input[0] = 'M' (0x4D), table[0] = 0x4D → match
+      input[1] = 'O' (0x4F), table[1] = 0x4F → match
+      input[2] = 'V' (0x56), table[2] = 0x56 → match
+      return with ZF=1
+    JZ found → ZF=1, jump to found
+    INX H, INX H → advance HL to opcode byte
+    MOV A, M → A = 0xB8 (MOV opcode)
+    ... write 0xB8 to output_buffer[0x0300] ...
+
+  Output buffer after processing "MOV A,5":
+    0x0300: 0xB8   (MOV A, immediate opcode)
+    0x0301: 0x05   (value 5)
+
+  The assembler produced machine code.
+```
+
+### The Proof — Every Operation Was a Primitive ISA Instruction
+
+```
+EVERY OPERATION THE ASSEMBLER PERFORMS:
+
+Reading input characters:    MOV A, M        (load byte from memory)
+Comparing characters:        CPI byte        (compare A with immediate)
+                             CMP M           (compare A with memory)
+Branching on match:          JZ address      (jump if ZF=1)
+Branching on no match:       JNZ address     (jump if ZF=0)
+Advancing pointers:          INX H, INX D    (increment register pair)
+Loading pointers:            LXI H, addr     (load 16-bit immediate)
+Writing output bytes:        MOV M, A        (store A to memory)
+Calling subroutines:         CALL address    (push RIP, jump)
+Returning from routines:     RET             (pop RIP, jump back)
+Storing to memory:           STA address     (store A to address)
+Loading from memory:         LDA address     (load A from address)
+
+NOTHING ELSE EXISTS IN THE ASSEMBLER.
+No higher-level operations.
+No file system access.
+No operating system.
+No interpreter.
+No virtual machine.
+
+The "understanding" of what MOV means:
+  Exists ONLY in the opcode table (bytes 4D 4F 56 00 B8)
+  And the search algorithm that compares input against that table
+  Both are themselves just bytes being processed by 12 primitive operations
+
+The CPU sees:
+  MOV A, M    — load a byte from memory into A
+  CPI 0x4D    — compare A with 0x4D ('M')
+  JZ address  — jump somewhere if they are equal
+
+The CPU does NOT see:
+  "oh, the user typed MOV, therefore this is a move instruction"
+  The CPU has no concept of mnemonics, assemblers, or programming languages
+  It only moves bytes, compares bytes, and jumps
+
+The ALGORITHM in the assembler code creates the appearance of
+understanding by systematically comparing input bytes against
+a pre-built table of known byte sequences.
+Pattern matching. Nothing more.
+
+THE FIRST ASSEMBLER WAS BUILT BY:
+  A human with an ISA manual
+  A human with a notebook
+  A human with arithmetic skills (calculating addresses)
+  A human with patience (toggling 200+ switches)
+  No other tools required or available
+
+EVERYTHING BUILT SINCE THEN:
+  Every assembler from 1950 to today
+  Every compiler from FORTRAN to Rust
+  Every operating system from Unix to Android
+  Every application from vi to Chrome
+  All of it traces back through an unbroken chain
+  to this process: human, manual, notebook, switches
+```
+
+
+---
+
+## Part IV — The Operating System
+
+*Chapters 8-10 define what the kernel is, what the OS is, how privilege is enforced in hardware, and how user programs request kernel services. These chapters answer: what lives in ring 0 and what lives in ring 3.*
+
+---
+
 # Chapter 5: Protection Rings — Hardware-Enforced Privilege
 
 Chapters 01 and 02 explained the hardware and instruction set. Every program runs on the same CPU, using the same instructions. But not every program should be allowed to do everything. A user's web browser should not be able to read another user's files, disable interrupts, or modify the CPU's page tables. This chapter explains the hardware mechanism that enforces these boundaries — protection rings.
@@ -6485,6 +5612,8 @@ Checking library integrity:
 
 *Chapters 6-7 explain how human-readable source code becomes machine code the CPU executes. The assembler, the compiler, the ELF format, and the complete flow from writing code to running it.*
 
+---
+
 # Chapter 6: How Code Becomes Machine Code — Assembly, C and Compilers
 
 The CPU executes machine code. Everything else — assembly, C, Python — is a layer of abstraction on top of that reality. Understanding how code gets from human-readable source to bytes the CPU executes is essential before we can understand how the kernel itself is built, and later how memory vulnerabilities work.
@@ -6767,7 +5896,8 @@ Characteristic: Portable (same bytecode runs anywhere the VM exists),
 -e 
 ---
 
--e 
+-e
+
 ---
 
 # Chapter 7: Automata Theory, Formal Languages and Regular Expressions
@@ -7326,1068 +6456,7 @@ Today:
 
 ---
 
-## How Files, Video, Audio and Images Are Processed — The CPU Only Sees Numbers
-
-The CPU does not know what a video is. It never does. It never needs to. A video file, an audio file, an image, a PDF — they are all sequences of bytes on disk. The CPU can read bytes, compare bytes, add bytes, multiply bytes, jump based on byte values. That is sufficient to process any file format in existence. The meaning of the bytes exists only in the algorithm the programmer wrote. The CPU executes the algorithm blindly.
-
-### Everything on a Computer Is Bytes
-
-```
-A video file:
-  Not a stream of pictures the CPU understands
-  Just bytes: 00 00 00 18 66 74 79 70 6D 70 34 32...
-  These bytes follow the H.264/MP4 specification format
-  The CPU reads them, processes them according to the algorithm
-  The algorithm produces pixel values for the display
-
-An audio file (.mp3):
-  Just bytes: FF FB 90 00 00 0F F0 00 00 69 00 00 00 08...
-  These bytes follow the MP3 specification format
-  The algorithm produces PCM sample values for the sound card
-
-A JPEG image:
-  Just bytes: FF D8 FF E0 00 10 4A 46 49 46 00 01...
-  FF D8 = JPEG magic bytes (every JPEG starts here)
-  The algorithm decodes these into RGB pixel values
-
-A PDF:
-  Just bytes forming the PDF specification format
-  The PDF renderer algorithm reads them, draws text and graphics
-
-The CPU treats ALL of these identically:
-  Load bytes from disk into RAM
-  Pass pointer to algorithm
-  Algorithm reads bytes, applies mathematical operations
-  Produces output (pixels, samples, text) that goes to hardware
-```
-
-### How H.264 Video Compression Works
-
-H.264 (used in .mp4 files) compresses video by exploiting two facts: most pixels in a frame are similar to neighbouring pixels, and most frames are similar to previous frames.
-
-```
-RAW VIDEO SIZE PROBLEM:
-  1080p at 60fps: 1920 × 1080 × 3 bytes (RGB) × 60 = 373 MB/s
-  A 2-hour film: 373 MB/s × 7200s = 2.7 TB
-  
-  H.264 compressed: ~5 GB for the same film (540× smaller)
-
-H.264 ENCODING ALGORITHM:
-  (Everything below is algorithms — the CPU executes primitive instructions)
-
-  Step 1: Colour space conversion
-    Convert RGB → YCbCr (luminance + two colour channels)
-    Human vision is more sensitive to brightness than colour
-    Colour channels can be at half resolution without visible loss
-    CPU operations: multiply each pixel by a 3×3 matrix
-                    MOV, MUL, ADD instructions on arrays of bytes
-
-  Step 2: Divide frame into macroblocks
-    Each frame is divided into 16×16 pixel regions (macroblocks)
-    CPU operations: nested loops, array index arithmetic
-                    MOV, ADD, CMP instructions
-
-  Step 3: Motion estimation (the key compression insight)
-    Frame N and Frame N+1 are similar
-    Instead of storing Frame N+1 fully, store:
-      "this macroblock moved 3 pixels right and 2 pixels down"
-    That motion vector takes 4 bytes vs 768 bytes for the raw block
-    Algorithm: compare current macroblock against regions in previous frame
-               find the region with the smallest difference
-               store the offset (the motion vector) instead of the pixels
-    CPU operations: SUB (find differences), loops, CMP (find minimum)
-
-  Step 4: DCT (Discrete Cosine Transform)
-    For macroblocks that cannot be predicted from previous frame:
-    Apply DCT to convert spatial pixel data to frequency data
-    Low frequencies = broad features (sky colour, large shapes)
-    High frequencies = fine detail (hair texture, sharp edges)
-    Human eye is less sensitive to high-frequency errors
-    Algorithm: multiply 8×8 pixel block by DCT matrix
-    CPU operations: MUL, ADD on 64 values — pure arithmetic
-
-  Step 5: Quantisation (where quality loss happens)
-    Divide each DCT coefficient by a quantisation factor
-    High-frequency coefficients become small → round to zero → discard
-    Lower quality setting = larger quantisation factors = more zeros
-    Algorithm: divide coefficient array by quantisation matrix
-    CPU operations: DIV, rounding
-
-  Step 6: Entropy coding
-    The quantised coefficients contain many zeros
-    Run-length encode: "32 zeros" instead of 32 zero bytes
-    Huffman/CABAC: common patterns get shorter bit codes
-    Algorithm: statistical frequency analysis, tree building, bit packing
-    CPU operations: CMP, conditional jumps, bit shifts, OR operations
-
-  Output: compressed bitstream
-  CPU never knew this was a video
-  CPU only computed: matrix multiplications, comparisons, divisions
-
-H.264 DECODING (what happens during playback):
-  Read compressed bytes from file
-  Entropy decode → get quantised DCT coefficients
-  Dequantise → get DCT coefficients
-  Inverse DCT → get residual pixel values
-  Add motion compensation → reconstruct full frame
-  Convert YCbCr → RGB
-  Write RGB pixels to frame buffer → display shows image
-  All reverse operations, same arithmetic, same CPU instructions
-```
-
-### How MP3 Audio Compression Works
-
-```
-RAW AUDIO SIZE:
-  CD quality: 44100 samples/s × 16 bits × 2 channels = 1411 Kbps
-  MP3 at 128 Kbps: 11× compression
-
-MP3 ENCODING ALGORITHM:
-
-  Step 1: Filter bank
-    Split audio signal into 32 frequency subbands
-    Algorithm: convolve audio samples with 512-coefficient filter
-    CPU operations: MUL, ADD on arrays of samples (dot products)
-
-  Step 2: Psychoacoustic model
-    Human ear has masking: loud sounds hide quiet sounds near them
-    A 1000Hz tone at 80dB makes nearby frequencies inaudible below 60dB
-    Algorithm: compute masking thresholds from current audio spectrum
-               identify which frequencies are inaudible right now
-    CPU operations: FFT algorithm (divide and conquer, complex arithmetic)
-
-  Step 3: Bit allocation
-    Assign more bits to audible frequencies, fewer to masked frequencies
-    Frequencies below masking threshold get zero bits (discarded)
-    Algorithm: iterative optimisation loop
-    CPU operations: comparison loops, accumulation
-
-  Step 4: Quantisation and encoding
-    Quantise the allocated bits, apply Huffman coding
-    CPU operations: division, table lookups, bit manipulation
-
-  Output: .mp3 bytes containing only perceptually important audio
-
-DECODING: exact reverse
-  Read bits, Huffman decode, dequantise, inverse filter bank
-  Output PCM samples to OS audio system → sound card → speaker
-
-Every step: arrays of numbers, arithmetic operations
-CPU never heard the music
-```
-
-### Why Dedicated Hardware Exists
-
-The CPU can decode H.264 and MP3 in software using its general-purpose ALU. FFmpeg does exactly this. But dedicated hardware is far more efficient:
-
-```
-SOFTWARE DECODE (CPU running FFmpeg):
-  4K H.265 decode: uses 30-40% of modern CPU
-  Power consumption: 15-25W for decode alone
-  
-HARDWARE DECODE (dedicated video decoder chip):
-  Same 4K H.265 decode: uses <1% of CPU
-  Power consumption: 0.5-2W
-  Why: the H.265 algorithm is implemented as fixed circuits
-       no fetch-decode-execute overhead
-       data flows through the circuit automatically
-       exactly like the systolic arrays in Chapter 23
-
-CPU ALU: general purpose, can do anything, moderate efficiency
-FIXED CIRCUIT: does one thing, maximum efficiency, cannot be changed
-
-The mathematics is identical.
-The implementation differs: software algorithm vs hardwired circuit.
-
-Examples of dedicated decode/encode silicon:
-  GPU: thousands of cores for parallel matrix math
-  NPU: systolic array for neural network matrix multiplication
-  VPU: H.264/H.265/AV1 codec in silicon
-  ISP: camera pipeline in silicon (demosaic, denoise, white balance)
-  DSP: audio filtering in silicon
-```
-
 ---
-
-## How the First Assembler and First Compiler Were Built
-
-This is the bootstrapping problem — one of the deepest questions in computing. The answer requires understanding four distinct historical stages.
-
-### The Core Insight — The CPU Cares Only About Bytes in Memory
-
-The CPU does not know how those bytes got into memory. It does not know if a human toggled them in via switches, if an assembler produced them, or if a compiler generated them. It only knows: fetch bytes, decode opcode, execute, repeat.
-
-This means:
-
-```
-Any program, written by any method, that produces correct bytes in memory
-will run correctly on the CPU.
-
-The question "how did you get those bytes there?" is irrelevant to the CPU.
-It is only relevant to the humans building the tools.
-```
-
-### Stage 0 — The Human Is the Assembler (1940s)
-
-```
-SITUATION:
-  CPU built and working
-  ISA manual written and published
-  No software tools of any kind
-  Not even an assembler
-
-PROGRAMMER'S COMPLETE WORKFLOW:
-
-  1. Design the algorithm on paper in plain language
-     Example: "sort these 10 numbers using bubble sort"
-
-  2. Translate to pseudocode steps:
-     "compare element at position i with element at position i+1"
-     "if first is greater, swap them"
-     "loop through all positions"
-
-  3. Open ISA manual, find the instruction for each step:
-     "compare: opcode is 0x39, followed by ModRM byte"
-     "conditional jump if greater: opcode is 0x7F, then offset byte"
-     "swap: three MOV instructions"
-
-  4. Calculate all addresses and offsets:
-     "the jump target is 12 bytes back from here"
-     "12 in two's complement 8-bit = 0xF4"
-
-  5. Write binary values in notebook:
-     Address 0000: 0x39 0xC8     (CMP EAX, ECX)
-     Address 0002: 0x7F 0x06     (JG skip_swap)
-     Address 0004: 0x89 0xC2     (MOV EDX, EAX)
-     ...
-
-  6. Sit at front panel, toggle each byte into memory
-     Set 8 switches: 0 0 1 1 1 0 0 1 (= 0x39)
-     Press DEPOSIT
-     Set 8 switches: 1 1 0 0 1 0 0 0 (= 0xC8)
-     Press DEPOSIT
-     Repeat for every byte in the notebook
-
-  7. Set address switches to 0x0000, press LOAD ADDR, press RUN
-
-THE HUMAN PERFORMED:
-  Lexical analysis:    reading their own notation in the notebook
-  Parsing:             understanding the algorithm structure
-  Register allocation: deciding which register holds which variable
-  Code generation:     finding the correct opcode for each operation
-  Assembly:            toggling binary into memory
-  
-ALL OF THIS WAS DONE WITHOUT ANY SOFTWARE.
-The entire process existed only in the human brain and the notebook.
-
-A sorting algorithm for 10 numbers required approximately:
-  40-60 instructions × 2-4 bytes each = 80-240 bytes
-  80-240 DEPOSIT operations at the front panel
-  Each byte requiring correctly setting 8 switches
-  Plus calculating all jump offsets by hand
-  A single wrong bit anywhere caused incorrect behaviour
-```
-
-### Stage 1 — The First Assembler Built By Hand
-
-```
-MOTIVATION:
-  The task of looking up opcodes in a manual is mechanical
-  The task of converting "MOV" text to 0x89 bytes is mechanical
-  A machine can do mechanical tasks faster and with fewer errors
-  Someone needed to write a program that reads text and outputs opcodes
-
-THE INSIGHT:
-  An assembler's algorithm is simple:
-    Read characters
-    When you see "MOV": output the MOV opcode bytes
-    When you see "ADD": output the ADD opcode bytes
-    When you see a register name: output its encoding
-    When you see a number: convert ASCII digits to binary value
-    When you see a label: record its address, patch references later
-  
-  This algorithm, while tedious to implement, is not complex.
-  Someone could calculate every byte of this program by hand.
-
-HOW IT WAS ACTUALLY DONE (EDSAC team, Cambridge, late 1940s - 1951):
-
-  Step 1: Design the assembler algorithm on paper
-    What characters indicate which instructions?
-    What is the notation going to be?
-    How will labels and addresses be handled?
-    The team agreed on a notation (the first assembly language)
-
-  Step 2: Write the assembler in that notation (on paper, not yet runnable)
-    COMPARE: AL, 'M'    (is current character M?)
-    JUMP IF EQUAL: handle_MOV
-    COMPARE: AL, 'A'
-    JUMP IF EQUAL: handle_ADD
-    ...
-    handle_MOV:
-      OUTPUT: 0x89     (MOV opcode byte)
-      ...
-
-  Step 3: Translate that notation to binary by hand
-    Open ISA manual
-    "COMPARE AL with immediate" = opcode 0x3C, then the immediate byte
-    "JUMP IF EQUAL" = opcode 0x74, then the signed offset byte
-    Calculate every address and offset by hand
-    Write binary values in notebook
-
-  Step 4: Toggle all bytes into memory using front panel switches
-    This took hours to days for an assembler of several hundred bytes
-
-  Step 5: Run the assembler
-    Feed source text through paper tape reader or keyboard
-    Assembler reads text, outputs binary machine code
-
-  Step 6: The assembler assembles a better version of itself
-    Write improved assembler in the new notation (text file)
-    Feed through the working assembler
-    Get better assembler as output
-    Discard the hand-toggled version
-    BOOTSTRAP COMPLETE
-
-WHAT THE FIRST ASSEMBLER ACTUALLY DID (simplified):
-
-  read_char:
-    AL = next character from input
-
-    if AL == 'M': goto check_MOV
-    if AL == 'A': goto check_ADD
-    if AL == 'J': goto check_JMP
-    if AL == 'R': goto check_RET
-    if AL == ';': skip until newline (comment)
-    if AL == 0:   done (end of input)
-    goto read_char
-
-  check_MOV:
-    read next char, check it is 'O'
-    read next char, check it is 'V'
-    read operand specifications
-    output correct MOV opcode byte(s)
-    goto read_char
-
-  check_ADD:
-    read next char, check it is 'D'
-    read next char, check it is 'D'
-    read operand specifications
-    output ADD opcode byte(s)
-    goto read_char
-
-  EVERY ONE OF THESE OPERATIONS is implemented as:
-    MOV AL, [input_pointer]   (read a byte from input)
-    CMP AL, 'M'               (compare with character M)
-    JE  check_MOV             (jump if equal)
-    MOV [output_pointer], 0x05 (write opcode byte to output)
-    INC output_pointer         (advance output position)
-  
-  All primitive ISA instructions.
-  Calculated by hand from the ISA manual.
-  Toggled into memory via front panel switches.
-  Running on the CPU as just another program.
-```
-
-### Stage 2 — The First Compiler (Written in Assembly)
-
-```
-MOTIVATION:
-  Assembly is still tedious
-  Managing registers by hand is error-prone
-  Calling conventions must be handled manually
-  Someone wants to write: result = a + b;
-  Instead of: MOV EAX, [a] / ADD EAX, [b] / MOV [result], EAX
-
-THE INSIGHT:
-  The translation from "result = a + b" to three assembly instructions
-  is also mechanical and rule-based
-  A program could do this translation
-
-THE FIRST COMPILER'S ALGORITHM:
-
-  Read source text character by character
-  Identify tokens: identifiers, operators, numbers, punctuation
-  (This is the lexer — implemented as character comparison loops)
-
-  Recognise patterns:
-    IDENTIFIER '=' EXPRESSION
-    EXPRESSION = IDENTIFIER OPERATOR IDENTIFIER
-
-  Apply code generation rules:
-    When you see: A = B + C
-    Emit:
-      "MOV EAX, [" + B + "]"
-      "ADD EAX, [" + C + "]"
-      "MOV [" + A + "], EAX"
-
-  This rule is written as assembly code:
-    compare current token type with EQUALS
-    if match: call emit_assignment_code
-    
-    emit_assignment_code:
-      write "MOV EAX, [" to output buffer
-      write left-hand side variable name
-      write "]" to output buffer
-      write newline
-      ...
-
-HOW IT WAS BUILT:
-
-  Someone wrote these rules as an assembly language program
-  Fed that assembly through the existing assembler
-  Got a compiler binary
-  
-  The compiler's output was assembly text
-  That text was fed through the assembler
-  The assembler produced machine code
-  Chain: source code → compiler → assembly → assembler → machine code
-
-The compiler had these limitations:
-  Only handled simple expressions
-  No functions initially
-  No complex control flow
-  No type system
-
-But it worked. And it could be improved.
-
-IMPROVING THE COMPILER:
-  Write a better compiler in the language the first compiler handles
-  Feed it through the first compiler → get better compiler binary
-  Each iteration added more features
-  Eventually: the compiler handles enough of its own language
-  that the compiler can be rewritten in its own language
-  This is the self-hosting moment
-```
-
-### Stage 3 — The Complete Bootstrap Chain
-
-```
-EVERY TOOL IN USE TODAY traces back through this chain:
-
-1940s: HUMANS ARE THE TOOLS
-   Human brain = assembler + compiler + linker
-   Front panel switches = keyboard + storage
-   ISA manual = opcode table
-   Result: hand-calculated machine code programs
-
-1949-1951: EDSAC INITIAL ORDERS (first bootstrap)
-   31 instructions hand-wired into read-only store
-   Reads programs from paper tape automatically
-   First stored-program computer running user programs
-
-Early 1950s: FIRST ASSEMBLER
-   Calculated by hand as machine code
-   Toggled into memory via switches
-   Reads assembly text → outputs machine code
-   Bootstraps: assembler assembles better assembler
-
-Mid 1950s: FIRST HIGH-LEVEL LANGUAGE COMPILERS
-   FORTRAN (IBM, 1957): first commercially successful compiler
-   Written in assembly by John Backus's team at IBM
-   Translated mathematical formulas to machine code
-   Scientists could write: X = A + B*C instead of assembly
-
-Late 1950s-1960s: COMPILER THEORY DEVELOPS
-   Chomsky's grammar hierarchy (1956)
-   Regular expressions and finite automata (Kleene, Thompson)
-   Compiler design becomes a formal discipline
-   Compilers become self-hosting
-
-1972: C LANGUAGE
-   Dennis Ritchie writes C compiler in assembly and BCPL
-   Unix kernel rewritten in C
-   C compiler compiles itself (self-hosting)
-   Portability: recompile → run on different CPU architecture
-
-1987: GCC (GNU COMPILER COLLECTION)
-   Written in C, compiles C
-   Compiled by earlier C compilers
-   Eventually compiles itself
-   Used to compile Linux kernel
-
-1991: LINUX KERNEL
-   Written in C
-   Compiled by GCC
-   GCC compiled by older GCC
-   ...chain continues back...
-
-2024: YOUR PROGRAM
-   gcc hello.c -o hello
-   GCC reads hello.c (GCC itself compiled by older GCC)
-   Generates x86-64 machine code bytes
-   Kernel loads ELF into memory
-   CPU fetches bytes, decoder fires, ALU executes
-   Output appears on your terminal
-   
-   The bytes in that binary trace back through:
-   GCC → older GCC → even older GCC → first C compiler (assembly)
-   → first assembler (machine code hand-calculated)
-   → EDSAC initial orders (wired into silicon)
-   → a human at a front panel in Cambridge in 1949
-     setting binary switches one bit at a time
-
-EVERY COMPILER, EVERY OPERATING SYSTEM, EVERY PROGRAM
-you have ever used or written is built on this chain.
-The chain never broke.
-The first link was a human hand on a toggle switch.
-```
-
-### Why This Answers Both Questions Together
-
-```
-THE CPU ONLY KNOWS PRIMITIVE INSTRUCTIONS → TRUE, ALWAYS
-  Add, subtract, compare, jump, load, store
-  These have not changed since the first stored-program computers
-  Every program ever written executes as these primitives
-
-PROGRAMS IMPLEMENT ALGORITHMS USING THOSE PRIMITIVES → TRUE
-  Video compression: matrix math, comparisons, bit manipulation
-  Audio compression: convolution, FFT, quantisation
-  Operating system: memory management, scheduling, device control
-  Compiler: text processing, pattern matching, code emission
-  All of the above = loops, arithmetic, comparisons, memory access
-
-THE BOOTSTRAP RESOLVES THE APPARENT CONTRADICTION:
-  "How did compilers get built if CPUs only understand primitives?"
-  
-  Answer: the first tools were built by humans performing
-  the same transformation that tools later automated.
-  
-  The human was the first compiler.
-  The ISA manual was the first opcode table.
-  The notebook was the first symbol table.
-  The front panel was the first keyboard.
-  
-  Then those humans built tools to replace themselves.
-  Those tools built better tools.
-  That process has continued for 75 years.
-  It never required the CPU to understand anything beyond
-  its primitive instruction set.
-  
-  The CPU understood only: fetch, decode, execute.
-  Everything else was humans and their algorithms.
-```
-
-
-
----
-
-## Building the First Assembler From Scratch — Every Byte Calculated By Hand
-
-This section shows exactly how the first assembler was built when the CPU understood only primitive ISA instructions and no tools existed. Every step is shown with actual bytes, actual addresses, and exactly how a human calculated them from an ISA manual.
-
-### The Exact Problem
-
-The CPU understands only raw bytes. The decoder fires on specific bit patterns:
-
-```
-Byte 0x3C at decoder input:
-  Pattern detector for 0x3C fires
-  Control wire activates: "compare AL with next byte"
-  Flags set based on result
-
-Byte 0x74 at decoder input:
-  Pattern detector for 0x74 fires
-  Control wire activates: "if ZF=1, add next byte to instruction pointer"
-
-Byte 0x89 at decoder input:
-  Pattern detector for 0x89 fires
-  Control wire activates: "move register to register/memory"
-  Read ModRM byte next
-
-The CPU does not understand MOV, CMP, JE.
-It understands 0x89, 0x3C, 0x74.
-The assembler converts text to those bytes.
-That conversion is itself a sequence of primitive CPU operations.
-```
-
-### What the Assembler Must Do — Broken Into Primitive Steps
-
-```
-Goal: read "MOV AL, 5" from paper tape → output bytes 0xB0 0x05
-
-Required primitive steps:
-  1. Read character 'M' from input
-  2. Read character 'O' from input
-  3. Read character 'V' from input
-  4. Compare each character to the letter in the opcode table
-  5. All three match 'M','O','V' → this is MOV instruction
-  6. Skip the space character after MOV
-  7. Read 'A' from input
-  8. Read 'L' from input
-  9. Compare "AL" to known register names
- 10. AL maps to register encoding 0x00
- 11. Read ',' from input, skip it
- 12. Read '5' from input (ASCII byte 0x35)
- 13. Convert ASCII 0x35 to numeric value 5 (subtract 0x30)
- 14. MOV AL with immediate byte = opcode 0xB0
- 15. Write byte 0xB0 to output
- 16. Write byte 0x05 to output
- 17. Return to step 1 for next instruction
-
-Every one of these 17 steps is a primitive CPU operation:
-load byte, compare byte, jump if equal, store byte, add/subtract.
-Nothing else.
-```
-
-### The ISA Being Used — Intel 8080 (1974)
-
-We use the Intel 8080 — the CPU in the Altair 8800 (1975) that started the personal computer revolution. Simple 8-bit architecture. The programmer has this manual open on the desk.
-
-```
-INTEL 8080 ISA MANUAL ENTRIES USED:
-
-Opcode  Mnemonic        Bytes  Operation
-──────  ──────────────  ─────  ──────────────────────────────────────
-0x3E    MVI A, byte     2      Load immediate byte into register A
-0x3A    LDA addr        3      Load A from 16-bit memory address
-0x32    STA addr        3      Store A to 16-bit memory address
-0x7E    MOV A, M        1      Load A from memory at address in HL
-0x77    MOV M, A        1      Store A to memory at address in HL
-0x6F    MOV L, A        1      Copy A into register L
-0x67    MOV H, A        1      Copy A into register H
-0x7D    MOV A, L        1      Copy L into A
-0x7C    MOV A, H        1      Copy H into A
-0x23    INX H           1      Increment HL register pair by 1
-0x13    INX D           1      Increment DE register pair by 1
-0x21    LXI H, addr     3      Load 16-bit address into HL
-0x11    LXI D, addr     3      Load 16-bit address into DE
-0xFE    CPI byte        2      Compare A with immediate byte, set flags
-0xBE    CMP M           1      Compare A with byte at memory[HL]
-0xCA    JZ  addr        3      Jump to addr if ZF=1 (zero flag set)
-0xC2    JNZ addr        3      Jump to addr if ZF=0 (zero flag not set)
-0xC3    JMP addr        3      Jump unconditionally to addr
-0xCD    CALL addr       3      Push return addr to stack, jump to addr
-0xC9    RET             1      Pop return addr from stack, jump there
-0x76    HLT             1      Halt execution
-```
-
-### Step 1 — Memory Layout (Decided Before Writing One Instruction)
-
-The programmer draws this in their notebook:
-
-```
-ADDRESS RANGE    CONTENTS                     SIZE
-────────────     ──────────────────────────   ──────
-0x0000-0x01FF    Assembler code               512 bytes reserved
-0x0100-0x011A    Opcode lookup table (data)   26 bytes (inside code area)
-0x0200-0x02FF    Input buffer                 256 bytes
-0x0300-0x03FF    Output buffer                256 bytes
-0x03F0           input_ptr  (low byte)         1 byte
-0x03F1           input_ptr  (high byte)        1 byte
-0x03F2           output_ptr (low byte)         1 byte
-0x03F3           output_ptr (high byte)        1 byte
-0x03F4           current_char                  1 byte
-0x03FE-0x03FF    Stack (grows down)           small
-```
-
-### Step 2 — The Opcode Table (Data in Memory)
-
-This is just bytes sitting in memory at address 0x0100. The assembler's search code will scan through it:
-
-```
-ADDRESS  BYTES              MEANING
-───────  ─────────────────  ────────────────────────────────────
-0x0100   4D 4F 56 00 B8     'M','O','V',0x00, opcode=0xB8
-                             MOV A,immediate → opcode 0xB8
-0x0105   41 44 44 00 80     'A','D','D',0x00, opcode=0x80
-                             ADD A,B → opcode 0x80
-0x010A   53 55 42 00 90     'S','U','B',0x00, opcode=0x90
-                             SUB A,B → opcode 0x90
-0x010F   4A 4D 50 00 C3     'J','M','P',0x00, opcode=0xC3
-                             JMP → opcode 0xC3
-0x0114   48 4C 54 00 76     'H','L','T',0x00, opcode=0x76
-                             HLT → opcode 0x76
-0x0119   FF                  end-of-table marker
-
-Format: 3 ASCII chars + 0x00 null + 1 opcode byte = 5 bytes per entry
-```
-
-The programmer writes these bytes in the notebook. They are just data. The CPU never "sees" them as mnemonics — just bytes to be compared against.
-
-### Step 3 — Write skip_whitespace Routine
-
-Pseudocode:
-```
-skip_whitespace:
-  load byte from input buffer at input_ptr
-  if byte == 0x20 (space):   increment input_ptr, loop
-  if byte == 0x09 (tab):     increment input_ptr, loop
-  if byte == 0x0A (newline): increment input_ptr, loop
-  else: return (non-whitespace found, stays at input_ptr)
-```
-
-Programmer translates to 8080 machine code. For each instruction they look it up in the ISA manual and write the bytes. They calculate every address by counting bytes from the start:
-
-```
-ADDRESS  BYTES        NOTATION (human notes only)   EXPLANATION
-───────  ──────────── ───────────────────────────── ───────────────────────────
-0x0020   21 F0 03     LXI H, 0x03F0                 HL = addr of input_ptr
-0x0023   7E           MOV A, M                      A = input_ptr low byte
-0x0024   6F           MOV L, A                      L = low byte
-0x0025   23           INX H                         point to high byte
-0x0026   7E           MOV A, M                      A = input_ptr high byte
-0x0027   67           MOV H, A                      H = high byte
-                                                     HL now = input pointer value
-0x0028   7E           MOV A, M                      A = char at input position
-0x0029   3A F4 03     STA 0x03F4                    save to current_char
-0x002C   FE 20        CPI 0x20                      compare with space
-0x002E   CA 3F 00     JZ  advance_input             if space: jump to 0x003F
-0x0031   FE 09        CPI 0x09                      compare with tab
-0x0033   CA 3F 00     JZ  advance_input             if tab: jump to 0x003F
-0x0036   FE 0A        CPI 0x0A                      compare with newline
-0x0038   CA 3F 00     JZ  advance_input             if newline: jump to 0x003F
-0x003B   C9           RET                           not whitespace — return
-
-advance_input: (0x003F)
-0x003F   23           INX H                         HL++ (advance input ptr)
-0x0040   7D           MOV A, L                      get new ptr low byte
-0x0041   32 F0 03     STA 0x03F0                    store new input_ptr low
-0x0044   7C           MOV A, H                      get new ptr high byte
-0x0045   32 F1 03     STA 0x03F1                    store new input_ptr high
-0x0048   C3 20 00     JMP 0x0020                    loop back to check next char
-```
-
-The programmer verifies: `JZ advance_input` at address 0x002E needs target 0x003F. They write `CA 3F 00` (little-endian: low byte first). They check: `0x003F` = `0x3F` low byte, `0x00` high byte. Correct.
-
-### Step 4 — Write read_char Routine
-
-```
-ADDRESS  BYTES        EXPLANATION
-───────  ──────────── ──────────────────────────────────────────
-0x0050   21 F0 03     LXI H, 0x03F0     HL = addr of input_ptr
-0x0053   7E           MOV A, M          A = low byte of input_ptr
-0x0054   6F           MOV L, A          L = low byte
-0x0055   23           INX H
-0x0056   7E           MOV A, M          A = high byte of input_ptr
-0x0057   67           MOV H, A          HL = actual input pointer
-0x0058   7E           MOV A, M          A = character at input_ptr
-0x0059   32 F4 03     STA 0x03F4        save to current_char
-0x005C   23           INX H             advance input pointer
-0x005D   7D           MOV A, L          get new low byte
-0x005E   32 F0 03     STA 0x03F0        store new input_ptr low
-0x0061   7C           MOV A, H          get new high byte
-0x0062   32 F1 03     STA 0x03F1        store new input_ptr high
-0x0065   C9           RET               return (A = character read)
-```
-
-### Step 5 — Write compare_3chars Routine
-
-Compares 3 bytes in input buffer against 3 bytes in opcode table:
-
-```
-INPUT:  HL = pointer to mnemonic in opcode table
-        DE = pointer to 3 chars read from input (at 0x0200)
-RETURN: ZF=1 if all 3 match, ZF=0 if any differ
-
-ADDRESS  BYTES        EXPLANATION
-───────  ──────────── ──────────────────────────────────────────
-0x0070   1A           LDAX D            A = input char (memory[DE])
-0x0071   BE           CMP M             compare with table char (memory[HL])
-0x0072   C2 7E 00     JNZ no_match      if different: jump to 0x007E
-0x0075   23           INX H             advance table pointer
-0x0076   13           INX D             advance input pointer
-0x0077   1A           LDAX D            A = next input char
-0x0078   BE           CMP M             compare with next table char
-0x0079   C2 7E 00     JNZ no_match      if different: jump to 0x007E
-0x007C   23 13        INX H, INX D      advance both
-(third character comparison follows same pattern)
-0x007E   23           INX H             point to null byte in table
-0x007F   7E           MOV A, M          load null byte
-0x0080   FE 00        CPI 0x00          is it null? (end of mnemonic)
-0x0082   C9           RET               return with ZF=1 if matched
-
-no_match: (0x007E — same address, different path)
-          (ZF=0 already set by failed CMP — just return)
-0x007E   C9           RET
-```
-
-### Step 6 — Write search_table Routine
-
-```
-INPUT:  DE = input buffer address (0x0200) holding mnemonic
-OUTPUT: A = opcode byte if found, or 0xFF if not found
-
-ADDRESS  BYTES        EXPLANATION
-───────  ──────────── ──────────────────────────────────────────
-0x0090   21 00 01     LXI H, 0x0100     HL = start of opcode table
-
-table_loop: (0x0093)
-0x0093   7E           MOV A, M          load first byte of entry
-0x0094   FE FF        CPI 0xFF          is it end-of-table marker?
-0x0096   CA B2 00     JZ not_found      yes: jump to 0x00B2
-
-0x0099   CD 70 00     CALL 0x0070       call compare_3chars
-                                         (HL=table entry, DE=input)
-0x009C   CA A8 00     JZ  found         ZF=1: match found, jump to 0x00A8
-
-(no match: advance HL by 5 to next table entry)
-0x009F   23           INX H             skip past mnemonic+null+opcode
-0x00A0   23           INX H             (5 bytes per entry)
-0x00A1   23           INX H
-0x00A2   23           INX H
-0x00A3   23           INX H
-0x00A4   C3 93 00     JMP table_loop    try next entry
-
-found: (0x00A8)
-(HL currently points at last char of matched mnemonic)
-(advance 2 more bytes to reach opcode byte)
-0x00A8   23           INX H             skip to null byte
-0x00A9   23           INX H             skip null, now at opcode byte
-0x00AA   7E           MOV A, M          A = opcode byte
-                                        (now write A to output buffer)
-0x00AB   21 F2 03     LXI H, 0x03F2     HL = addr of output_ptr
-0x00AE   7E           MOV A, M          ... (load output pointer)
-... (same pointer-loading sequence as read_char but for output)
-0x00B0   77           MOV M, A          store opcode to output[output_ptr]
-0x00B1   C9           RET
-
-not_found: (0x00B2)
-0x00B2   3E FF        MVI A, 0xFF       A = error code
-0x00B4   76           HLT               halt on error
-```
-
-### Step 7 — Write the Main Loop
-
-```
-ADDRESS  BYTES        EXPLANATION
-───────  ──────────── ──────────────────────────────────────────
-main: (0x0000)
-0x0000   3E 00        MVI A, 0x00       initialise
-0x0002   32 F0 03     STA 0x03F0        input_ptr low = 0
-0x0005   3E 02        MVI A, 0x02
-0x0007   32 F1 03     STA 0x03F1        input_ptr high = 0x02
-                                         (ptr = 0x0200 = input buffer)
-0x000A   3E 00        MVI A, 0x00
-0x000C   32 F2 03     STA 0x03F2        output_ptr low = 0
-0x000F   3E 03        MVI A, 0x03
-0x0011   32 F3 03     STA 0x03F3        output_ptr high = 0x03
-                                         (ptr = 0x0300 = output buffer)
-
-main_loop: (0x0014)
-0x0014   CD 20 00     CALL 0x0020       call skip_whitespace
-0x0017   3A F4 03     LDA 0x03F4        load current_char
-0x001A   FE 00        CPI 0x00          is it null? (end of input)
-0x001C   CA 1F 00     JZ done           yes: halt
-
-0x001F   11 00 02     LXI D, 0x0200     DE = input buffer (store mnemonic here)
-0x0022   CD 50 00     CALL 0x0050       read_char (1st char of mnemonic)
-0x0025   3A F4 03     LDA 0x03F4        get char
-0x0028   1A           LDAX D            (store it to 0x0200)
-... (read 2nd and 3rd chars similarly)
-0x0029   CD 90 00     CALL 0x0090       search_table (find opcode, emit it)
-0x002C   C3 14 00     JMP main_loop     process next instruction
-
-done: (0x001F — note: overlapping with next instruction, adjust addresses)
-0x002F   76           HLT
-```
-
-### Step 8 — The Complete Notebook
-
-After working through all routines, the programmer's notebook contains approximately 200 bytes total:
-
-```
-COMPLETE BYTE MAP (summary):
-
-0x0000-0x002F  Main initialisation and loop       (48 bytes)
-0x0020-0x004B  skip_whitespace routine             (44 bytes)
-0x0050-0x0065  read_char routine                   (22 bytes)
-0x0070-0x007F  compare_3chars routine              (16 bytes)
-0x0090-0x00B4  search_table routine                (37 bytes)
-0x0100-0x0119  Opcode table data                   (26 bytes)
-               Total: ~193 bytes
-```
-
-### Step 9 — Toggle Into Memory
-
-The programmer sits at the front panel. For every byte in the notebook:
-
-```
-For byte 0x21 at address 0x0020:
-  Binary: 0010 0001
-  
-  Set address switches: 0000 0000 0010 0000  (= 0x0020)
-  Press LOAD ADDR
-
-  Set data switches:
-    Switch 7: down (0)
-    Switch 6: down (0)
-    Switch 5: up   (1)
-    Switch 4: down (0)
-    Switch 3: down (0)
-    Switch 2: down (0)
-    Switch 1: down (0)
-    Switch 0: up   (1)
-  Press DEPOSIT
-  Address register automatically goes to 0x0021
-
-For byte 0xF0 at address 0x0021:
-  Binary: 1111 0000
-  Set data switches: up up up up down down down down
-  Press DEPOSIT
-
-For byte 0x03 at address 0x0022:
-  Binary: 0000 0011
-  Set data switches: down down down down down down up up
-  Press DEPOSIT
-
-... repeat for all 193 bytes ...
-
-Load opcode table data (at 0x0100):
-  Set address switches to 0x0100
-  Press LOAD ADDR
-  Toggle 0x4D ('M'):  0100 1101
-  Press DEPOSIT
-  Toggle 0x4F ('O'):  0100 1111
-  Press DEPOSIT
-  Toggle 0x56 ('V'):  0101 0110
-  Press DEPOSIT
-  Toggle 0x00 (null): 0000 0000
-  Press DEPOSIT
-  Toggle 0xB8 (opcode): 1011 1000
-  Press DEPOSIT
-  ... continue for all table entries ...
-```
-
-Total DEPOSIT operations: approximately 220.
-Time required: 1-3 hours.
-One wrong switch position: program executes incorrectly.
-
-### Step 10 — Load Source Text and Run
-
-```
-Punch assembly source text onto paper tape:
-  Characters: 'M','O','V',' ','A',',','5',0x0A,'A','D','D',...,0x00
-
-Load tape into reader at address 0x0200:
-  Reader feeds ASCII bytes into memory
-  0x0200: 0x4D ('M')
-  0x0201: 0x4F ('O')
-  0x0202: 0x56 ('V')
-  0x0203: 0x20 (' ')
-  0x0204: 0x41 ('A')
-  0x0205: 0x2C (',')
-  0x0206: 0x35 ('5')
-  0x0207: 0x0A (newline)
-  ...
-
-Set address switches to 0x0000 (start of assembler)
-Press LOAD ADDR
-Press RUN
-
-CPU executes:
-  0x0000: MVI A, 0x00     → A = 0
-  0x0002: STA 0x03F0      → memory[0x03F0] = 0
-  ... (initialise pointers) ...
-  0x0014: CALL 0x0020     → skip_whitespace
-    0x0020: LXI H, 0x03F0  → HL = 0x03F0
-    0x0023: MOV A, M       → A = memory[0x03F0] = 0x00 (low byte of ptr)
-    0x0024: MOV L, A       → L = 0x00
-    ... load HL = 0x0200 (input pointer) ...
-    0x0028: MOV A, M       → A = memory[0x0200] = 0x4D ('M')
-    0x0029: STA 0x03F4     → current_char = 'M'
-    0x002C: CPI 0x20       → compare 'M' with space → not equal, ZF=0
-    0x002E: JZ advance     → ZF=0, do not jump
-    0x0031: CPI 0x09       → compare 'M' with tab → not equal
-    0x0033: JZ advance     → ZF=0, do not jump
-    0x0036: CPI 0x0A       → compare 'M' with newline → not equal
-    0x0038: JZ advance     → ZF=0, do not jump
-    0x003B: RET            → return to main loop
-  (current_char = 'M', input not whitespace)
-
-  0x0017: LDA 0x03F4     → A = 'M'
-  0x001A: CPI 0x00       → 'M' != null, ZF=0
-  0x001C: JZ done        → ZF=0, do not jump — continue
-
-  ... (reads 'M','O','V' into DE area, calls search_table) ...
-
-  search_table executes:
-    Loads 0x0100 into HL (start of table)
-    Loads first entry: 0x4D ('M')
-    compare_3chars called:
-      input[0] = 'M' (0x4D), table[0] = 0x4D → match
-      input[1] = 'O' (0x4F), table[1] = 0x4F → match
-      input[2] = 'V' (0x56), table[2] = 0x56 → match
-      return with ZF=1
-    JZ found → ZF=1, jump to found
-    INX H, INX H → advance HL to opcode byte
-    MOV A, M → A = 0xB8 (MOV opcode)
-    ... write 0xB8 to output_buffer[0x0300] ...
-
-  Output buffer after processing "MOV A,5":
-    0x0300: 0xB8   (MOV A, immediate opcode)
-    0x0301: 0x05   (value 5)
-
-  The assembler produced machine code.
-```
-
-### The Proof — Every Operation Was a Primitive ISA Instruction
-
-```
-EVERY OPERATION THE ASSEMBLER PERFORMS:
-
-Reading input characters:    MOV A, M        (load byte from memory)
-Comparing characters:        CPI byte        (compare A with immediate)
-                             CMP M           (compare A with memory)
-Branching on match:          JZ address      (jump if ZF=1)
-Branching on no match:       JNZ address     (jump if ZF=0)
-Advancing pointers:          INX H, INX D    (increment register pair)
-Loading pointers:            LXI H, addr     (load 16-bit immediate)
-Writing output bytes:        MOV M, A        (store A to memory)
-Calling subroutines:         CALL address    (push RIP, jump)
-Returning from routines:     RET             (pop RIP, jump back)
-Storing to memory:           STA address     (store A to address)
-Loading from memory:         LDA address     (load A from address)
-
-NOTHING ELSE EXISTS IN THE ASSEMBLER.
-No higher-level operations.
-No file system access.
-No operating system.
-No interpreter.
-No virtual machine.
-
-The "understanding" of what MOV means:
-  Exists ONLY in the opcode table (bytes 4D 4F 56 00 B8)
-  And the search algorithm that compares input against that table
-  Both are themselves just bytes being processed by 12 primitive operations
-
-The CPU sees:
-  MOV A, M    — load a byte from memory into A
-  CPI 0x4D    — compare A with 0x4D ('M')
-  JZ address  — jump somewhere if they are equal
-
-The CPU does NOT see:
-  "oh, the user typed MOV, therefore this is a move instruction"
-  The CPU has no concept of mnemonics, assemblers, or programming languages
-  It only moves bytes, compares bytes, and jumps
-
-The ALGORITHM in the assembler code creates the appearance of
-understanding by systematically comparing input bytes against
-a pre-built table of known byte sequences.
-Pattern matching. Nothing more.
-
-THE FIRST ASSEMBLER WAS BUILT BY:
-  A human with an ISA manual
-  A human with a notebook
-  A human with arithmetic skills (calculating addresses)
-  A human with patience (toggling 200+ switches)
-  No other tools required or available
-
-EVERYTHING BUILT SINCE THEN:
-  Every assembler from 1950 to today
-  Every compiler from FORTRAN to Rust
-  Every operating system from Unix to Android
-  Every application from vi to Chrome
-  All of it traces back through an unbroken chain
-  to this process: human, manual, notebook, switches
-```
-
-
----
-
-## Part IV — The Operating System
-
-*Chapters 8-10 define what the kernel is, what the OS is, how privilege is enforced in hardware, and how user programs request kernel services. These chapters answer: what lives in ring 0 and what lives in ring 3.*
 
 # Chapter 8: The Kernel and the OS — What They Are and Where They Live
 
@@ -8737,7 +6806,8 @@ If you can restrict a process's system calls, you limit what damage it can do ev
 -e 
 ---
 
--e 
+-e
+
 ---
 
 # Chapter 10: System Calls and Function Calls — The Precise Difference
@@ -8858,6 +6928,8 @@ strace -c bash -c 'x=$((5+3)); echo $x'
 ## Part V — The Unix Philosophy
 
 *Chapters 11-13 cover the history and design decisions that shaped Linux. The ASR-33 teletype, Unix origins, the shell, the terminal, and the 'everything is a file' philosophy that the kernel implements.*
+
+---
 
 # Chapter 11: History and Philosophy — ASR-33, Unix, C, BSD and Linux
 
@@ -9971,7 +8043,8 @@ Your program writes the same `read()` call. The kernel routes it to the right im
 -e 
 ---
 
--e 
+-e
+
 ---
 
 # Chapter 13: Everything is a File — Inodes, VFS and System Calls
@@ -10332,6 +8405,8 @@ If you can restrict a process's system calls, you limit what damage it can do ev
 
 *Chapters 14-17 cover what happens when programs actually run. Storage organises data persistently. File descriptors connect everything. Processes are created via fork and exec. The boot chain brings the entire system to life.*
 
+---
+
 # Chapter 14: Storage — Partitions, Filesystems and LVM
 
 The CPU executes code, but that code and data must live somewhere permanently. Storage is the foundation everything else builds on — the kernel itself lives on disk, the filesystem organises it, and the partition structure defines the boundaries. This chapter establishes how physical storage is divided, organised and accessed.
@@ -10614,7 +8689,8 @@ The entire Kali installer ran from the Ventoy USB drive (shown as sdb), which is
 -e 
 ---
 
--e 
+-e
+
 ---
 
 # Chapter 15: File Descriptors — The Unified Handle for Everything
@@ -10732,7 +8808,8 @@ ls process:                  grep process:
 -e 
 ---
 
--e 
+-e
+
 ---
 
 # Chapter 16: The Process Model — Fork, Exec and the Process Tree
@@ -11004,7 +9081,8 @@ The entire Unix pipeline mechanism — arbitrary chains of programs communicatin
 -e 
 ---
 
--e 
+-e
+
 ---
 
 # Chapter 17: The Boot Chain — Power On to Login
@@ -11211,6 +9289,8 @@ Above it, Linux is the same code on everything.
 ## Part VII — Networking and Communication
 
 *Chapters 18-19 cover how programs communicate across machines. Sockets are file descriptors over a network. Reverse shells are socket redirection applied to shells.*
+
+---
 
 # Chapter 19: Networking — Sockets, TCP, BSD API and Reverse Shells
 
@@ -11456,6 +9536,8 @@ The advantage over TCP: no network stack overhead, no IP headers, no TCP handsha
 
 *Chapters 20-22 apply everything learned. Network defence uses knowledge of sockets and TCP. Sandboxing uses namespaces, rings and file descriptors. Memory vulnerabilities exploit the Von Neumann memory model, the stack, and the CPU's trust in return addresses.*
 
+---
+
 # Chapter 20: Network Defence — DDoS Protection and the Attack Surface
 
 Now that you understand sockets and how servers accept connections, you can understand what a Distributed Denial of Service attack is actually doing — and more importantly, where to stop it. Every defence technique in this chapter maps directly to the networking concepts in the previous chapter.
@@ -11653,7 +9735,8 @@ findtime = 600    # failures counted within ten minutes
 -e 
 ---
 
--e 
+-e
+
 ---
 
 # Chapter 21: Service Sandboxing — Isolating Services from the OS
@@ -11876,7 +9959,8 @@ sudo apparmor_parser -r /etc/apparmor.d/usr.bin.payment-api
 -e 
 ---
 
--e 
+-e
+
 ---
 
 # Chapter 22: Memory Vulnerabilities — Buffer Overflows and Beyond
@@ -12776,6 +10860,8 @@ strace -e trace=clone,execve bash
 ## Part IX — Mobile
 
 *Chapter 23 applies every concept from Parts I-VIII to mobile devices. The same transistors, instruction sets, rings, kernels, file descriptors, and networking — engineered under the constraint of a battery.*
+
+---
 
 # Chapter 23: Mobile Architecture — From Battery to Baseband
 
@@ -14517,3 +12603,7 @@ adb shell ls /dev/qseecom  # Qualcomm TEE interface
 
 *End of Masterclass — Version 6.*
 *Built from electrons to exploitation, structured from physical foundation to advanced security.*
+
+---
+
+*End of Masterclass — Version 6.*
